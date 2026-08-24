@@ -115,14 +115,41 @@ export function crearConectorAsana(config: ConfigAsana): Conector {
 
   const listarComentarios = tool(
     "listar_comentarios",
-    "Lista los comentarios y el historial de una tarea de Asana. Sirve para ver si hay movimiento real.",
+    "Lista la actividad de una tarea de Asana separando comentarios de personas de eventos automáticos. " +
+      "Úsala para decidir si una tarea tiene movimiento real: sólo `comentarios_humanos` cuenta como actividad.",
     { tarea_gid: z.string().describe("GID de la tarea.") },
     async ({ tarea_gid }) => {
       const r = await get<Array<Record<string, unknown>>>(`/tasks/${tarea_gid}/stories`, {
-        opt_fields: "text,type,created_at,created_by.name",
+        opt_fields: "text,type,resource_subtype,created_at,created_by.name",
         limit: "50",
       });
-      return { content: [{ type: "text", text: resultadoTexto(r.data) }] };
+
+      // Asana mete en el historial sus propios eventos ("due_today" se dispara
+      // cada mañana) y además le sube `modified_at` a la tarea. Si se mezclan
+      // con los comentarios, una tarea que nadie ha tocado en semanas parece
+      // recién movida. Separarlos aquí, en código, evita que el agente lo
+      // confunda: es la diferencia entre detectar el trabajo estancado y no verlo.
+      const humanos = r.data.filter((s) => s.type === "comment");
+      const sistema = r.data.filter((s) => s.type !== "comment");
+      const ultimoHumano = humanos.at(-1)?.created_at ?? null;
+
+      return {
+        content: [
+          {
+            type: "text",
+            text: resultadoTexto({
+              comentarios_humanos: humanos,
+              ultimo_comentario_humano: ultimoHumano,
+              total_eventos_sistema: sistema.length,
+              nota:
+                ultimoHumano === null
+                  ? "Ningún comentario de una persona en esta tarea. Los eventos de sistema NO son actividad."
+                  : "Sólo `comentarios_humanos` cuenta como actividad real.",
+              eventos_sistema: sistema,
+            }),
+          },
+        ],
+      };
     },
   );
 

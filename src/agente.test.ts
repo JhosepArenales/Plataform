@@ -81,3 +81,28 @@ test("los conectores separan lectura y escritura sin solaparse", () => {
     assert.ok(conector.herramientasLectura.length > 0, `${conector.id} sin herramientas de lectura`);
   }
 });
+
+/**
+ * Regresión de un fallo que sólo apareció al correr contra datos reales de Asana:
+ * Asana dispara avisos automáticos ("due_today") cada mañana y cada uno le sube
+ * `modified_at` a la tarea. Una tarea sin tocar en una semana aparecía modificada
+ * hoy mismo, así que el playbook la descartaba — justo lo que existe para detectar.
+ * Esta prueba impide que alguien "simplifique" el prompt y reintroduzca el fallo.
+ */
+test("el playbook de tareas estancadas no se fía de modified_at", () => {
+  const estancadas = buscarPlaybook("tareas-estancadas");
+  assert.ok(estancadas, "falta el playbook tareas-estancadas");
+
+  const prompt = estancadas.prompt({ hoy: "2026-01-01", aplicar: false, args: {} });
+
+  assert.match(
+    prompt,
+    /NO es actividad[\s\S]*modified_at/,
+    "el prompt debe advertir explícitamente que modified_at no es señal de actividad",
+  );
+  assert.match(
+    prompt,
+    /comentario humano|comentarios humanos/,
+    "el criterio de actividad debe ser el comentario humano",
+  );
+});
