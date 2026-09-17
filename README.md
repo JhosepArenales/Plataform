@@ -9,8 +9,11 @@ un Google Doc, consultado en vivo, y Gemini como motor de IA.
   - Lee el Google Doc vía Google Docs API (se cachea 5 minutos para no golpear
     la API en cada mensaje, pero siempre refleja ediciones recientes).
   - Envía el texto del doc + la pregunta del usuario a Gemini.
-- `public/` — widget de chat embebible (`widget.js` + `widget.css`) y una
-  página de prueba (`index.html`).
+- `public/` — widget de chat embebible propio (`widget.js` + `widget.css`) y
+  una página de prueba (`index.html`). Alternativa liviana sin Typebot.
+- `typebot/` — Typebot auto-hospedado (interfaz de chat + editor visual de
+  flujo, sin código), que llama a `server/` vía un bloque de Webhook. Ver
+  `typebot/README.md`.
 
 ## 1. Generar credenciales de Google (cuenta de servicio)
 
