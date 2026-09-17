@@ -1,0 +1,107 @@
+{
+  "name": "Bot - Google Doc + Gemini",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "chat",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-trigger",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [240, 300],
+      "webhookId": "chat-bot-webhook"
+    },
+    {
+      "parameters": {
+        "url": "=https://docs.googleapis.com/v1/documents/{{$env.GOOGLE_DOC_ID}}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleApi",
+        "options": {}
+      },
+      "id": "get-google-doc",
+      "name": "Get Google Doc",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [460, 300],
+      "credentials": {
+        "googleApi": {
+          "id": "",
+          "name": "Google Service Account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const content = $input.first().json.content ?? [];\nconst lines = [];\nfor (const element of content) {\n  const paragraph = element.paragraph;\n  if (!paragraph || !paragraph.elements) continue;\n  const line = paragraph.elements.map((el) => (el.textRun ? el.textRun.content : '')).join('');\n  if (line.trim().length > 0) lines.push(line.trimEnd());\n}\nconst knowledgeBase = lines.join('\\n');\nreturn [{ json: { knowledgeBase, question: $('Webhook').first().json.body.question } }];"
+      },
+      "id": "extract-doc-text",
+      "name": "Extract Doc Text",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [680, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={{$env.GEMINI_API_KEY}}",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { \"contents\": [ { \"role\": \"user\", \"parts\": [ { \"text\": $json.question } ] } ], \"systemInstruction\": { \"role\": \"system\", \"parts\": [ { \"text\": \"Eres un asistente que responde preguntas SOLO con base en el siguiente documento. Si la respuesta no está en el documento, dilo claramente en vez de inventarla. Responde en español, de forma clara y directa.\\n\\n--- DOCUMENTO ---\\n\" + $json.knowledgeBase + \"\\n--- FIN DEL DOCUMENTO ---\" } ] } } }}",
+        "options": {}
+      },
+      "id": "ask-gemini",
+      "name": "Ask Gemini",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [900, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const answer = $input.first().json.candidates?.[0]?.content?.parts?.[0]?.text ?? 'No se pudo generar una respuesta.';\nreturn [{ json: { answer } }];"
+      },
+      "id": "extract-answer",
+      "name": "Extract Answer",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1120, 300]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { \"answer\": $json.answer } }}",
+        "options": {}
+      },
+      "id": "respond-to-webhook",
+      "name": "Respond to Webhook",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [1340, 300]
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [[{ "node": "Get Google Doc", "type": "main", "index": 0 }]]
+    },
+    "Get Google Doc": {
+      "main": [[{ "node": "Extract Doc Text", "type": "main", "index": 0 }]]
+    },
+    "Extract Doc Text": {
+      "main": [[{ "node": "Ask Gemini", "type": "main", "index": 0 }]]
+    },
+    "Ask Gemini": {
+      "main": [[{ "node": "Extract Answer", "type": "main", "index": 0 }]]
+    },
+    "Extract Answer": {
+      "main": [[{ "node": "Respond to Webhook", "type": "main", "index": 0 }]]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {}
+}

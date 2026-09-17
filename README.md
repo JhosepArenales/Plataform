@@ -12,8 +12,10 @@ un Google Doc, consultado en vivo, y Gemini como motor de IA.
 - `public/` — widget de chat embebible propio (`widget.js` + `widget.css`) y
   una página de prueba (`index.html`). Alternativa liviana sin Typebot.
 - `typebot/` — Typebot auto-hospedado (interfaz de chat + editor visual de
-  flujo, sin código), que llama a `server/` vía un bloque de Webhook. Ver
-  `typebot/README.md`.
+  flujo, sin código). Su bloque de Webhook puede llamar a `server/` o al
+  flujo de `n8n/`. Ver `typebot/README.md`.
+- `n8n/` — el mismo flujo (Google Doc + Gemini) pero como workflow de n8n,
+  editable sin código y sin depender de `server/`. Ver `n8n/README.md`.
 
 ## 1. Generar credenciales de Google (cuenta de servicio)
 
