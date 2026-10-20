@@ -151,7 +151,7 @@ export async function renderAiWizard() {
   return h('div', { class: 'page narrow' }, adminTabs('ai'),
     h('h1', {}, '✨ Crear un curso con IA'),
     h('p', { class: 'muted' }, 'Sube tus manuales, políticas, presentaciones o planillas. La IA arma lecciones cortas y quizzes; tú revisas y publicas.'),
-    !status.available && h('div', { class: 'card callout warn' }, h('strong', {}, 'IA no configurada. '), 'Se generará un borrador básico (secciones + preguntas de completar). Para cursos con redacción y preguntas de calidad, configura ANTHROPIC_API_KEY en el servidor.'),
+    !status.available && h('div', { class: 'card callout warn' }, h('strong', {}, 'IA no disponible. '), status.hint ?? 'Se generará un borrador básico (secciones + preguntas de completar). Para cursos con redacción y preguntas de calidad, configura ANTHROPIC_API_KEY en el servidor.'),
     h('div', { class: 'card stack' }, h('h3', {}, '1. Material de origen'), collector.el),
     h('div', { class: 'card stack' }, h('h3', {}, '2. Indicaciones (opcional)'), instructions,
       h('label', { class: 'field inline' }, 'Lecciones aproximadas', count)),
@@ -265,8 +265,9 @@ export async function renderEditor(courseId) {
     versionsList.replaceChildren(...versions.map((v) => h('li', {},
       h('div', {}, h('strong', {}, `v${v.version}`), ' · ', h('span', { class: 'small muted' }, `${formatDate(v.created_at)}${v.author ? ` · ${v.author}` : ''}`), h('p', { class: 'small' }, v.change_note)),
       v.version !== state.version && h('button', { class: 'btn btn-ghost btn-sm', onclick: async (e) => {
+        const btn = e.currentTarget; // el evento pierde currentTarget tras el await
         if (!await confirmAction('Restaurar versión', `Se creará una nueva versión con el contenido de la v${v.version}. La versión actual queda guardada en el historial.`, 'Restaurar')) return;
-        try { await busy(e.currentTarget, () => api(`/api/courses/${state.id}/versions/${v.id}/restore`, { method: 'POST' })); toast('Versión restaurada', 'success'); dirty = false; location.reload(); } catch (err) { toast(err.message, 'error'); }
+        try { await busy(btn, () => api(`/api/courses/${state.id}/versions/${v.id}/restore`, { method: 'POST' })); toast('Versión restaurada', 'success'); dirty = false; location.reload(); } catch (err) { toast(err.message, 'error'); }
       } }, 'Restaurar'))));
   };
   refreshVersions();
@@ -408,14 +409,15 @@ export async function renderUsers() {
         return h('tr', {},
           h('td', {}, u.name), h('td', {}, u.email), h('td', {}, u.lessons_done), h('td', {}, u.xp), roleCell,
           h('td', {}, u.id !== session.user.id && h('button', { class: 'btn btn-ghost btn-sm', onclick: async (e) => {
+            const btn = e.currentTarget; // el evento pierde currentTarget tras el await
             const target = u.role === 'admin' ? 'learner' : 'admin';
             if (!await confirmAction('Cambiar rol', `${u.name} pasará a ser ${target === 'admin' ? 'administrador (podrá crear, editar y publicar cursos)' : 'aprendiz'}.`, 'Cambiar')) return;
             try {
-              await busy(e.currentTarget, () => api(`/api/admin/users/${u.id}/role`, { method: 'POST', body: { role: target } }));
+              await busy(btn, () => api(`/api/admin/users/${u.id}/role`, { method: 'POST', body: { role: target } }));
               u.role = target;
               roleCell.firstChild.className = `status ${target === 'admin' ? 'status-published' : 'status-draft'}`;
               roleCell.firstChild.textContent = target === 'admin' ? 'Administrador' : 'Aprendiz';
-              e.target.textContent = target === 'admin' ? 'Quitar admin' : 'Hacer admin';
+              btn.textContent = target === 'admin' ? 'Quitar admin' : 'Hacer admin';
               toast('Rol actualizado', 'success');
             } catch (err) { toast(err.message, 'error'); }
           } }, u.role === 'admin' ? 'Quitar admin' : 'Hacer admin')));

@@ -7,7 +7,8 @@
   "scripts": {
     "start": "node --no-warnings=ExperimentalWarning server/index.js",
     "dev": "node --no-warnings=ExperimentalWarning --watch server/index.js",
-    "test": "node --no-warnings=ExperimentalWarning --test --test-concurrency=1 tests/*.test.js"
+    "test": "node --no-warnings=ExperimentalWarning --test --test-concurrency=1 tests/*.test.js",
+    "build:demo": "node demo/build.mjs"
   },
   "engines": {
     "node": ">=22.13"

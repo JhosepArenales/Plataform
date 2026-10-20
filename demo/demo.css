@@ -1,0 +1,48 @@
+/* Estilos exclusivos de la demostración */
+.demo-bar { display: flex; align-items: center; gap: .4rem; flex-wrap: wrap; padding: .45rem max(16px, 2vw); background: #2a0f45; color: #fff; font-size: .85rem; }
+.demo-pill { background: var(--aqua); color: #06343a; font-weight: 800; border-radius: 999px; padding: .15rem .7rem; font-size: .75rem; letter-spacing: .02em; }
+.demo-label { opacity: .8; margin-left: .3rem; }
+.demo-btn { font: inherit; font-weight: 700; color: #fff; background: rgba(255,255,255,.14); border: 0; border-radius: 999px; padding: .3rem .8rem; cursor: pointer; transition: background 150ms; }
+.demo-btn:hover { background: rgba(255,255,255,.26); }
+.demo-btn:active { transform: scale(.96); }
+.demo-btn.ghost { margin-left: auto; background: transparent; border: 1.5px solid rgba(255,255,255,.35); }
+
+.demo-video { border-radius: var(--radius); overflow: hidden; background: #1b0b2e; color: #fff; margin-bottom: 1rem; }
+.demo-video-stage { position: relative; aspect-ratio: 16 / 9; max-width: 100%; display: grid; place-items: center; background: radial-gradient(circle at 30% 30%, #9b2cf0 0%, #5a00a0 45%, #1b0b2e 100%); text-align: center; padding: 1rem; }
+.demo-video-caption { font-size: clamp(1.1rem, 3vw, 1.9rem); font-weight: 800; max-width: 80%; text-wrap: balance; transition: opacity 200ms; }
+.demo-video-play { position: absolute; width: 72px; height: 72px; border-radius: 50%; border: 0; background: rgba(255,255,255,.92); color: var(--brand); font-size: 1.8rem; cursor: pointer; box-shadow: 0 8px 24px rgba(0,0,0,.35); bottom: 1.2rem; right: 1.2rem; }
+.demo-video-play:hover { transform: scale(1.05); }
+.demo-video-bar { height: 5px; background: rgba(255,255,255,.18); }
+.demo-video-bar span { display: block; height: 100%; width: 0; background: var(--aqua); transition: width 100ms linear; }
+.demo-video-foot { display: flex; gap: .75rem; justify-content: space-between; flex-wrap: wrap; padding: .5rem .8rem; font-size: .8rem; opacity: .85; }
+.demo-video-foot a { color: #9fe8f2; }
+
+.demo-host { position: relative; }
+/* El celular simulado ocupa la franja derecha: la pantalla del juego no queda debajo. */
+@media (min-width: 901px) { .demo-host .game-bg.host { padding-right: 320px; } }
+/* La barra de la demo ocupa ~46px: el juego cabe completo en la pantalla. */
+.demo-bar ~ main .game-bg { min-height: calc(100vh - 46px); }
+.demo-phone { position: fixed; right: 16px; bottom: 16px; z-index: 40; width: 280px; background: #120a1c; border-radius: 24px; padding: 8px 8px 10px; box-shadow: 0 20px 50px rgba(0,0,0,.45); color: #fff; }
+.demo-phone-head { display: flex; justify-content: space-between; align-items: center; padding: 2px 8px 6px; font-size: .78rem; font-weight: 800; }
+.demo-phone-head .icon-btn { color: #fff; }
+.demo-phone-frame { border-radius: 18px; overflow: hidden; height: 470px; max-height: 62vh; }
+.demo-phone-body { height: 100%; overflow: auto; }
+.demo-phone .game-bg { min-height: 100%; height: 100%; padding: 10px; }
+.demo-phone .player-answers { gap: 8px; }
+.demo-phone .answer.big { min-height: 80px; font-size: .95rem; }
+.demo-phone .answer.big .shape { font-size: 2rem; }
+.demo-phone .center-msg .big-emoji { font-size: 3rem; }
+.demo-phone h2 { font-size: 1.1rem; }
+.demo-join { align-items: stretch; justify-content: center; gap: .6rem; text-align: center; }
+.demo-phone-note { font-size: .75rem; opacity: .8; margin: .5rem .3rem 0; line-height: 1.35; }
+.demo-phone.min .demo-phone-frame, .demo-phone.min .demo-phone-note { display: none; }
+.demo-phone.min { width: auto; }
+
+@media (max-width: 900px) {
+  .demo-phone { position: static; width: auto; margin: 12px; }
+  .demo-phone-frame { height: 520px; max-height: none; }
+}
+@media (max-width: 600px) {
+  .demo-label { display: none; }
+  .demo-btn { padding: .3rem .6rem; }
+}
