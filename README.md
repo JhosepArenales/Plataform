@@ -6,13 +6,15 @@ Espacio de capacitación para personas nuevas: videos, cursos interactivos, quiz
 
 | Para quien aprende | Para quien administra |
 |---|---|
+| Elige su área al ingresar y ve solo los cursos de su área y los de toda la empresa |
 | Catálogo de cursos con búsqueda y categorías | **Crear curso con IA**: sube archivos, URL o texto y obtén lecciones + quizzes |
 | Lecciones de video (subido, YouTube, Vimeo, Drive), lectura y quiz | Editor de cursos: lecciones, videos, preguntas, orden, vista previa |
 | Progreso por curso, XP, niveles, insignias y ranking | **Actualizar con IA**: sube el material nuevo y la IA propone qué cambiar |
 | Quiz con explicación por pregunta (aprueba con 70 %) | Historial de versiones con nota de cambio y restauración |
 | Juego en vivo desde el celular con PIN, sin necesidad de cuenta | Juego en vivo proyectable: lobby, temporizador, respuestas, ranking y podio |
 | | Panel con indicadores por curso y alertas de cursos con baja nota o finalización |
-| | Gestión de personas y roles |
+| | Gestión de personas, roles y áreas (lista controlada; cada curso define a qué áreas va dirigido) |
+| | Avance promedio por área en el panel |
 
 Formatos de fuente soportados: `.pdf`, `.docx`, `.xlsx`, `.csv`, `.pptx`, `.txt`, `.md`, `.json`, `.html`, URL pública y texto pegado. Los PDF escaneados (imagen) necesitan OCR previo.
 
@@ -43,6 +45,10 @@ docker run -p 3000:3000 -v academia-data:/data -e ANTHROPIC_API_KEY=... academia
 2. Revisa en el editor, agrega videos (sube un archivo o pega un link) y **Publica**.
 3. Cuando cambie una política o proceso: abre el curso → **Actualizar con IA** → sube el documento nuevo. La IA conserva lo vigente, cambia lo necesario y escribe la nota de versión. Nada se guarda hasta que lo revisas; el progreso de las personas se conserva.
 4. Para una sesión grupal: **Juego en vivo** → proyecta la pantalla → las personas entran desde el celular con el PIN.
+
+## Demo interactiva sin servidor
+
+`npm run build:demo` genera `demo/dist/academia-demo.html`: la misma interfaz con un backend simulado en el navegador (datos de ejemplo, lectura real de PDF/Word/Excel/PowerPoint, juego con participantes simulados). Publicada dentro de Claude usa la IA de la cuenta de quien la abre.
 
 ## Arquitectura
 

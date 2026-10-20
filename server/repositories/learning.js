@@ -101,11 +101,33 @@ export function createLearningRepo(db) {
     return { ...levelFor(xp), lessons_done: lessons, courses_done: courses, badges, recent };
   }
 
-  function leaderboard(limit = 10) {
+  // areaId opcional: ranking solo entre personas de la misma área.
+  function leaderboard(limit = 10, areaId = null) {
     return db.prepare(`SELECT u.id, u.name, COALESCE(SUM(x.points),0) AS xp
       FROM users u LEFT JOIN xp_events x ON x.user_id = u.id
-      WHERE u.active = 1 GROUP BY u.id ORDER BY xp DESC, u.name LIMIT ?`).all(limit)
+      WHERE u.active = 1 ${areaId ? 'AND u.area_id = ?' : ''} GROUP BY u.id ORDER BY xp DESC, u.name LIMIT ?`).all(...(areaId ? [areaId, limit] : [limit]))
       .map((r) => ({ ...r, level: levelFor(r.xp).name }));
+  }
+
+  // Avance por área: % promedio de lecciones completadas de los cursos que le corresponden a cada persona.
+  function areaMetrics() {
+    const weekAgo = new Date(Date.now() - 7 * 864e5).toISOString();
+    const areas = db.prepare('SELECT id, name, icon FROM areas WHERE active = 1 ORDER BY name COLLATE NOCASE').all();
+    return areas.map((a) => {
+      const lessonIds = db.prepare(`SELECT l.id FROM lessons l JOIN courses c ON c.id = l.course_id
+        WHERE c.status = 'published' AND (NOT EXISTS (SELECT 1 FROM course_areas ca WHERE ca.course_id = c.id)
+          OR EXISTS (SELECT 1 FROM course_areas ca WHERE ca.course_id = c.id AND ca.area_id = ?))`).all(a.id).map((r) => r.id);
+      const people = db.prepare('SELECT id FROM users WHERE active = 1 AND area_id = ?').all(a.id).map((r) => r.id);
+      const assigned = new Set(lessonIds);
+      let sum = 0;
+      for (const uid of people) {
+        const done = db.prepare('SELECT lesson_id FROM lesson_progress WHERE user_id = ?').all(uid).filter((r) => assigned.has(r.lesson_id)).length;
+        sum += assigned.size ? done / assigned.size : 0;
+      }
+      const activeWeek = people.length ? db.prepare(`SELECT COUNT(DISTINCT x.user_id) AS n FROM xp_events x JOIN users u ON u.id = x.user_id
+        WHERE u.area_id = ? AND x.created_at > ?`).get(a.id, weekAgo).n : 0;
+      return { ...a, people: people.length, active_week: activeWeek, assigned_lessons: assigned.size, avg_progress: people.length ? Math.round((100 * sum) / people.length) : null };
+    });
   }
 
   // Indicadores para el panel de administración.
@@ -124,7 +146,8 @@ export function createLearningRepo(db) {
           WHERE l.course_id = ? GROUP BY p.user_id HAVING COUNT(*) = ?)`).get(c.id, c.lessons).n : 0;
       c.completion_rate = c.started ? Math.round((100 * c.completed) / c.started) : 0;
     }
-    return { learners, active_week: activeWeek, courses };
+    const noArea = db.prepare('SELECT COUNT(*) AS n FROM users WHERE active = 1 AND area_id IS NULL').get().n;
+    return { learners, active_week: activeWeek, courses, areas: areaMetrics(), people_without_area: noArea };
   }
 
   return { completeLesson, submitQuiz, progressFor, myStats, leaderboard, adminMetrics, award };

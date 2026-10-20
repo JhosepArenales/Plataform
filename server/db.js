@@ -8,11 +8,19 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 const SCHEMA = `
+CREATE TABLE IF NOT EXISTS areas (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL UNIQUE COLLATE NOCASE,
+  icon TEXT NOT NULL DEFAULT '🏢',
+  active INTEGER NOT NULL DEFAULT 1,
+  created_at TEXT NOT NULL
+);
 CREATE TABLE IF NOT EXISTS users (
   id TEXT PRIMARY KEY,
   email TEXT NOT NULL UNIQUE,
   name TEXT NOT NULL,
   role TEXT NOT NULL CHECK (role IN ('admin','learner')),
+  area_id TEXT REFERENCES areas(id),
   active INTEGER NOT NULL DEFAULT 1,
   created_at TEXT NOT NULL
 );
@@ -34,6 +42,12 @@ CREATE TABLE IF NOT EXISTS courses (
   created_by TEXT REFERENCES users(id),
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL
+);
+-- Sin filas para un curso = el curso es para toda la empresa.
+CREATE TABLE IF NOT EXISTS course_areas (
+  course_id TEXT NOT NULL REFERENCES courses(id) ON DELETE CASCADE,
+  area_id TEXT NOT NULL REFERENCES areas(id),
+  PRIMARY KEY (course_id, area_id)
 );
 CREATE TABLE IF NOT EXISTS lessons (
   id TEXT PRIMARY KEY,
@@ -96,6 +110,7 @@ CREATE TABLE IF NOT EXISTS xp_events (
   points INTEGER NOT NULL,
   created_at TEXT NOT NULL
 );
+CREATE INDEX IF NOT EXISTS idx_course_areas_area ON course_areas(area_id);
 CREATE INDEX IF NOT EXISTS idx_lessons_course ON lessons(course_id, position);
 CREATE INDEX IF NOT EXISTS idx_questions_lesson ON questions(lesson_id, position);
 CREATE INDEX IF NOT EXISTS idx_progress_user ON lesson_progress(user_id);
@@ -111,7 +126,23 @@ export function openDatabase(file) {
   const db = new DatabaseSync(file);
   db.exec('PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON;');
   db.exec(SCHEMA);
+  migrate(db);
   return db;
+}
+
+export const DEFAULT_AREAS = [
+  ['Comercial', '💼'], ['Operaciones', '⚙️'], ['Atención al cliente', '🎧'],
+  ['Tecnología', '💻'], ['Finanzas', '📊'], ['Recursos Humanos', '🤝'],
+];
+
+// Cambios de esquema para bases creadas con versiones anteriores.
+function migrate(db) {
+  const userCols = db.prepare('PRAGMA table_info(users)').all().map((c) => c.name);
+  if (!userCols.includes('area_id')) db.exec('ALTER TABLE users ADD COLUMN area_id TEXT REFERENCES areas(id)');
+  if (db.prepare('SELECT COUNT(*) AS n FROM areas').get().n === 0) {
+    const ins = db.prepare('INSERT INTO areas (id, name, icon, active, created_at) VALUES (?, ?, ?, 1, ?)');
+    for (const [name, icon] of DEFAULT_AREAS) ins.run(randomUUID(), name, icon, now());
+  }
 }
 
 // Ejecuta fn dentro de una transacción; revierte todo si algo falla, para que

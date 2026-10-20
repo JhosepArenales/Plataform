@@ -2,7 +2,7 @@
 // de server/ (cursos, versiones, progreso, XP, juego en vivo, fuentes e IA)
 // para que la interfaz real funcione sin servidor. Lo usa demo/build.mjs.
 
-const DEMO_KEY = 'academia-demo-v1';
+const DEMO_KEY = 'academia-demo-v2';
 const nowIso = () => new Date().toISOString();
 const uid = () => (crypto.randomUUID ? crypto.randomUUID() : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`);
 const hex = (n) => Array.from(crypto.getRandomValues(new Uint8Array(n)), (b) => b.toString(16).padStart(2, '0')).join('');
@@ -38,7 +38,7 @@ function loadStore() { try { return JSON.parse(localStorage.getItem(DEMO_KEY)); 
 function persist() {
   try { localStorage.setItem(DEMO_KEY, JSON.stringify(store)); } catch { /* sin espacio o bloqueado */ }
 }
-function emptyStore() { return { users: [], sessions: {}, courses: [], versions: [], sources: [], progress: [], attempts: [], xp: [] }; }
+function emptyStore() { return { areas: [], users: [], sessions: {}, courses: [], versions: [], sources: [], progress: [], attempts: [], xp: [] }; }
 
 // ---------- Usuarios ----------
 const users = {
@@ -49,7 +49,7 @@ const users = {
     let u = users.byEmail(normalized);
     if (u) { if (name && name !== u.name) u.name = name; }
     else {
-      u = { id: uid(), email: normalized, name: name.trim(), role: store.users.length === 0 ? 'admin' : 'learner', active: 1, created_at: nowIso() };
+      u = { id: uid(), email: normalized, name: name.trim(), role: store.users.length === 0 ? 'admin' : 'learner', area_id: null, active: 1, created_at: nowIso() };
       store.users.push(u);
     }
     const token = hex(24);
@@ -57,7 +57,43 @@ const users = {
     return { token, user: publicUser(u) };
   },
 };
-const publicUser = (u) => ({ id: u.id, email: u.email, name: u.name, role: u.role });
+const areaById = (id) => store.areas.find((a) => a.id === id) ?? null;
+const publicUser = (u) => {
+  const a = areaById(u.area_id);
+  return { id: u.id, email: u.email, name: u.name, role: u.role, area_id: a?.id ?? null, area_name: a?.name ?? null, area_icon: a?.icon ?? null };
+};
+
+// ---------- Áreas ----------
+const areaPublic = (c) => (c.area_ids ?? []).map(areaById).filter(Boolean).map(({ id, name, icon }) => ({ id, name, icon }));
+const isForArea = (c, areaId) => !(c.area_ids?.length) || c.area_ids.includes(areaId);
+function listAreas(includeInactive) {
+  return store.areas.filter((a) => includeInactive || a.active).sort((a, b) => a.name.localeCompare(b.name, 'es')).map((a) => ({
+    ...a, active: !!a.active,
+    people: store.users.filter((u) => u.active && u.area_id === a.id).length,
+    courses: store.courses.filter((c) => c.status === 'published' && c.area_ids?.includes(a.id)).length,
+  }));
+}
+function cleanAreaName(name, exceptId = null) {
+  const n = String(name ?? '').trim().replace(/\s+/g, ' ');
+  if (n.length < 2 || n.length > 40) throw httpError(400, 'El nombre del área debe tener entre 2 y 40 caracteres.');
+  if (store.areas.some((a) => a.id !== exceptId && a.name.toLowerCase() === n.toLowerCase())) throw httpError(409, `Ya existe un área llamada "${n}".`);
+  return n;
+}
+function selectableArea(id) {
+  const a = areaById(id);
+  if (!a || !a.active) throw httpError(400, 'Elige un área válida.');
+  return a;
+}
+function areaMetrics() {
+  const weekAgo = new Date(Date.now() - 7 * 864e5).toISOString();
+  return listAreas(false).map((a) => {
+    const assigned = new Set(store.courses.filter((c) => c.status === 'published' && isForArea(c, a.id)).flatMap((c) => c.lessons.map((l) => l.id)));
+    const people = store.users.filter((u) => u.active && u.area_id === a.id);
+    const sum = people.reduce((acc, u) => acc + (assigned.size ? store.progress.filter((p) => p.user_id === u.id && assigned.has(p.lesson_id)).length / assigned.size : 0), 0);
+    const activeWeek = new Set(store.xp.filter((x) => x.created_at > weekAgo && people.some((u) => u.id === x.user_id)).map((x) => x.user_id)).size;
+    return { id: a.id, name: a.name, icon: a.icon, people: people.length, active_week: activeWeek, assigned_lessons: assigned.size, avg_progress: people.length ? Math.round((100 * sum) / people.length) : null };
+  });
+}
 
 // ---------- Cursos ----------
 const LESSON_TYPES = new Set(['video', 'reading', 'quiz']);
@@ -78,7 +114,10 @@ function normalizeTree(tree) {
       video_url: l.type === 'video' ? (l.video_url || null) : null, duration_min: clampInt(Number(l.duration_min) || 5, 1, 600), questions,
     };
   });
-  return { title: tree.title.trim(), description: tree.description ?? '', category: tree.category?.trim() || 'General', cover_emoji: tree.cover_emoji || '📘', lessons };
+  const rawAreas = Array.isArray(tree.area_ids) ? tree.area_ids : (tree.areas ?? []).map((a) => a.id);
+  const area_ids = [...new Set(rawAreas.map(String))];
+  if (area_ids.some((id) => !areaById(id))) throw httpError(400, 'Una de las áreas elegidas no existe.');
+  return { title: tree.title.trim(), description: tree.description ?? '', category: tree.category?.trim() || 'General', cover_emoji: tree.cover_emoji || '📘', lessons, area_ids };
 }
 
 // Conserva los ids de lecciones existentes: el progreso de cada persona depende de ellos.
@@ -105,6 +144,7 @@ function courseView(c, { withAnswers }) {
       ...l,
       questions: l.type === 'quiz' ? l.questions.map((q) => (withAnswers ? { ...q } : { id: q.id, prompt: q.prompt, options: q.options, time_limit_sec: q.time_limit_sec })) : [],
     })),
+    area_ids: [...(c.area_ids ?? [])], areas: areaPublic(c),
     sources: store.sources.filter((s) => s.course_id === c.id).map(({ id, kind, name, char_count, created_at }) => ({ id, kind, name, char_count, created_at })),
   };
 }
@@ -117,7 +157,7 @@ function snapshot(course, note, userId) {
 function createCourse(tree, { userId, generatedByAi = false, sourceIds = [] }) {
   const data = normalizeTree(tree);
   const ts = nowIso();
-  const course = { id: uid(), title: data.title, description: data.description, category: data.category, cover_emoji: data.cover_emoji, status: 'draft', version: 1, generated_by_ai: generatedByAi ? 1 : 0, created_by: userId, created_at: ts, updated_at: ts, lessons: [] };
+  const course = { id: uid(), area_ids: data.area_ids, title: data.title, description: data.description, category: data.category, cover_emoji: data.cover_emoji, status: 'draft', version: 1, generated_by_ai: generatedByAi ? 1 : 0, created_by: userId, created_at: ts, updated_at: ts, lessons: [] };
   writeLessons(course, data.lessons);
   store.courses.push(course);
   for (const s of store.sources) if (sourceIds.includes(s.id)) s.course_id = course.id;
@@ -129,7 +169,7 @@ function updateCourse(id, tree, { userId, changeNote = 'Edición manual', source
   const course = findCourse(id);
   if (!course) throw httpError(404, 'Curso no encontrado.');
   const data = normalizeTree(tree);
-  Object.assign(course, { title: data.title, description: data.description, category: data.category, cover_emoji: data.cover_emoji, version: course.version + 1, updated_at: nowIso() });
+  Object.assign(course, { title: data.title, description: data.description, category: data.category, cover_emoji: data.cover_emoji, area_ids: data.area_ids, version: course.version + 1, updated_at: nowIso() });
   writeLessons(course, data.lessons);
   for (const s of store.sources) if (sourceIds.includes(s.id)) s.course_id = course.id;
   snapshot(course, changeNote, userId);
@@ -207,8 +247,8 @@ function myStats(userId) {
   };
 }
 
-function leaderboard(limit) {
-  return store.users.filter((u) => u.active).map((u) => ({ id: u.id, name: u.name, xp: xpOf(u.id) }))
+function leaderboard(limit, areaId = null) {
+  return store.users.filter((u) => u.active && (!areaId || u.area_id === areaId)).map((u) => ({ id: u.id, name: u.name, xp: xpOf(u.id) }))
     .sort((a, b) => b.xp - a.xp || a.name.localeCompare(b.name)).slice(0, limit).map((r) => ({ ...r, level: levelFor(r.xp).name }));
 }
 
@@ -230,7 +270,7 @@ function adminMetrics() {
   return {
     learners: store.users.filter((u) => u.active && u.role === 'learner').length,
     active_week: new Set(store.xp.filter((x) => x.created_at > weekAgo).map((x) => x.user_id)).size,
-    courses,
+    courses, areas: areaMetrics(), people_without_area: store.users.filter((u) => u.active && !u.area_id).length,
   };
 }
 
@@ -689,6 +729,10 @@ const remotePlayer = {
 // ---------- Datos de ejemplo ----------
 function seed() {
   store = emptyStore();
+  for (const [name, icon] of [['Comercial', '💼'], ['Operaciones', '⚙️'], ['Atención al cliente', '🎧'], ['Tecnología', '💻'], ['Finanzas', '📊'], ['Recursos Humanos', '🤝']]) {
+    store.areas.push({ id: uid(), name, icon, active: 1, created_at: nowIso() });
+  }
+  const areaId = (name) => store.areas.find((a) => a.name === name).id;
   const admin = users.login({ email: 'ana.gomez@plataform.com', name: 'Ana Gómez' }).user;
   const q = (prompt, options, c, explanation) => ({ prompt, options, correct_index: c, explanation, time_limit_sec: 20 });
   const demoVideo = 'demo:bienvenida';
@@ -712,36 +756,59 @@ function seed() {
         q('Perdiste tu laptop en un taxi. ¿Cuándo lo reportas?', ['Mañana', 'De inmediato', 'Si no aparece en una semana', 'No hace falta'], 1, 'Reportar de inmediato permite bloquear accesos a tiempo.'),
       ] },
     ] },
-    { title: 'Proceso comercial de punta a punta', cover_emoji: '💼', category: 'Ventas', description: 'Desde el primer contacto hasta la factura: etapas, responsables y plazos.', lessons: [
+    { title: 'Proceso comercial de punta a punta', areas: ['Comercial'], cover_emoji: '💼', category: 'Ventas', description: 'Desde el primer contacto hasta la factura: etapas, responsables y plazos.', lessons: [
       { type: 'reading', title: 'Etapas del embudo', duration_min: 6, content: '## Etapas\n1. Prospecto\n2. Reunión de diagnóstico\n3. Propuesta\n4. Cierre\n5. Traspaso a Operaciones\n\n## Para recordar\n- Cada etapa tiene un responsable.\n- El traspaso a Operaciones se hace con acta.' },
       { type: 'reading', title: 'Cómo registrar una oportunidad', duration_min: 5, content: '## En el CRM\n- Toda oportunidad se registra el **mismo día** del primer contacto.\n- Adjunta la propuesta enviada.\n\n## Para recordar\n- Lo que no está en el CRM no existe.' },
       { type: 'quiz', title: 'Repaso comercial', duration_min: 3, questions: [q('¿Cuándo se registra una oportunidad?', ['Al cerrar', 'El mismo día del primer contacto', 'A fin de mes', 'Cuando lo pida el jefe'], 1, 'Registrar a tiempo mantiene la trazabilidad.'), q('¿Qué etapa sigue a la propuesta?', ['Prospecto', 'Cierre', 'Diagnóstico', 'Facturación'], 1, 'Propuesta → Cierre → Traspaso.')] },
     ] },
-    { title: 'Atención al cliente', cover_emoji: '🎧', category: 'Operaciones', description: 'Protocolo de atención, tiempos de respuesta y manejo de reclamos.', lessons: [
+    { title: 'Atención al cliente', areas: ['Atención al cliente', 'Operaciones'], cover_emoji: '🎧', category: 'Operaciones', description: 'Protocolo de atención, tiempos de respuesta y manejo de reclamos.', lessons: [
       { type: 'reading', title: 'Protocolo de atención', duration_min: 5, content: '## Pasos\n1. Saluda con tu nombre.\n2. Identifica al cliente.\n3. Registra el caso.\n4. Confirma el número de ticket.\n\n## Para recordar\n- Respondemos en máximo 24 horas hábiles.' },
       { type: 'quiz', title: 'Quiz de atención', duration_min: 2, questions: [q('¿Plazo máximo de respuesta?', ['24 horas hábiles', '1 semana', '1 hora', 'Sin plazo'], 0, 'Es nuestro compromiso de servicio.')] },
+    ] },
+    { title: 'Técnicas de negociación', areas: ['Comercial'], cover_emoji: '🤝', category: 'Ventas', description: 'Cómo preparar una negociación, manejar objeciones y cerrar acuerdos que convienen a ambas partes.', lessons: [
+      { type: 'video', title: 'Negociar no es ganar: es acordar', video_url: 'demo:negociacion', duration_min: 5, content: 'Una buena negociación deja a ambas partes con ganas de volver a trabajar juntas.' },
+      { type: 'reading', title: 'Manejo de objeciones', duration_min: 6, content: '## Las 3 objeciones más comunes\n- **"Está caro":** muestra el costo de no resolver el problema.\n- **"Lo tengo que pensar":** pregunta qué información le falta para decidir.\n- **"Ya trabajo con otro proveedor":** pregunta qué mejoraría de su situación actual.\n\n## Para recordar\n- Escucha antes de responder.\n- Una objeción es una pregunta disfrazada.\n- Nunca bajes el precio sin cambiar el alcance.' },
+      { type: 'quiz', title: 'Quiz de negociación', duration_min: 3, questions: [
+        q('El cliente dice "está caro". ¿Qué haces primero?', ['Bajo el precio de inmediato', 'Muestro el costo de no resolver su problema', 'Cambio de tema', 'Le digo que es el precio de mercado'], 1, 'Conectar el precio con el valor evita descuentos innecesarios.'),
+        q('¿Cuándo es aceptable bajar el precio?', ['Siempre que lo pida', 'Nunca', 'Cuando también se ajusta el alcance', 'Si es fin de mes'], 2, 'Precio y alcance se mueven juntos.'),
+      ] },
+    ] },
+    { title: 'Mesa de ayuda y tickets', areas: ['Tecnología'], cover_emoji: '🛠️', category: 'Tecnología', description: 'Cómo clasificar, priorizar y cerrar tickets de soporte dentro de los tiempos acordados.', lessons: [
+      { type: 'reading', title: 'Prioridades de un ticket', duration_min: 5, content: '## Prioridades\n- **P1 Crítico:** la operación está detenida. Respuesta en 30 minutos.\n- **P2 Alto:** un equipo no puede trabajar. Respuesta en 4 horas.\n- **P3 Normal:** consulta o mejora. Respuesta en 2 días hábiles.\n\n## Para recordar\n- La prioridad la define el impacto, no quién lo pide.' },
+      { type: 'quiz', title: 'Quiz de soporte', duration_min: 2, questions: [q('Se cayó el sistema de facturación para toda la empresa. ¿Prioridad?', ['P1 Crítico', 'P2 Alto', 'P3 Normal', 'Depende de quién llame'], 0, 'La operación está detenida: P1.'), q('¿Qué define la prioridad?', ['El cargo de quien pide', 'El impacto en la operación', 'El orden de llegada', 'El área'], 1, 'El impacto, no la jerarquía.')] },
+    ] },
+    { title: 'Cierre contable mensual', areas: ['Finanzas'], cover_emoji: '📊', category: 'Finanzas', description: 'Calendario de cierre, conciliaciones y reportes que se entregan cada mes.', lessons: [
+      { type: 'reading', title: 'Calendario de cierre', duration_min: 6, content: '## Días hábiles del cierre\n1. **Día 1–2:** registro de facturas y gastos pendientes.\n2. **Día 3:** conciliación bancaria.\n3. **Día 4:** provisiones y ajustes.\n4. **Día 5:** estados financieros a gerencia.\n\n## Para recordar\n- El cierre termina el quinto día hábil.' },
+      { type: 'quiz', title: 'Quiz de cierre', duration_min: 2, questions: [q('¿Qué día se entrega el reporte a gerencia?', ['Día 1', 'Día 3', 'Día 5', 'Fin de mes'], 2, 'Los estados financieros se entregan el quinto día hábil.')] },
     ] },
     { title: 'Gastos y reembolsos', cover_emoji: '🧾', category: 'Inducción', description: 'Cómo rendir gastos y cuándo se pagan los reembolsos.', lessons: [
       { type: 'reading', title: 'Rendición mensual', duration_min: 4, content: '## Plazo\nAntes del **quinto día hábil** de cada mes, con comprobantes escaneados.\n\n## Para recordar\n- Finanzas paga en la siguiente quincena.' },
       { type: 'quiz', title: 'Repaso', duration_min: 2, questions: [q('¿Hasta cuándo rindes tus gastos?', ['Quinto día hábil', 'Fin de mes', 'Cuando quieras', 'Cada trimestre'], 0, 'Así Finanzas paga en la siguiente quincena.')] },
     ] },
   ];
-  const created = courses.map((c) => { const r = createCourse(c, { userId: admin.id }); findCourse(r.id).status = 'published'; return findCourse(r.id); });
+  const created = courses.map((c) => { const r = createCourse({ ...c, area_ids: (c.areas ?? []).map(areaId) }, { userId: admin.id }); findCourse(r.id).status = 'published'; return findCourse(r.id); });
   const welcome = created[0];
   const updated = courseView(welcome, { withAnswers: true });
   updated.lessons[2].content = updated.lessons[2].content.replace('## Para recordar', '## Cierre de la semana\n- Agenda una reunión de cierre con tu líder.\n\n## Para recordar');
   updateCourse(welcome.id, updated, { userId: admin.id, changeNote: 'Agregué la reunión de cierre de la primera semana.' });
-  const people = [['sofia.rios', 'Sofía Ríos', 9], ['mateo.lopez', 'Mateo López', 7], ['valentina.cruz', 'Valentina Cruz', 5], ['joaquin.vera', 'Joaquín Vera', 3], ['luis.perez', 'Luis Pérez', 1]];
-  for (const [u, name, n] of people) {
+  const people = [
+    ['sofia.rios', 'Sofía Ríos', 9, 'Comercial'], ['mateo.lopez', 'Mateo López', 7, 'Comercial'], ['valentina.cruz', 'Valentina Cruz', 5, 'Tecnología'],
+    ['joaquin.vera', 'Joaquín Vera', 3, 'Finanzas'], ['camila.soto', 'Camila Soto', 4, 'Atención al cliente'], ['diego.mora', 'Diego Mora', 6, 'Operaciones'],
+    ['luis.perez', 'Luis Pérez', 1, 'Comercial'],
+  ];
+  for (const [u, name, n, area] of people) {
     const { user } = users.login({ email: `${u}@plataform.com`, name });
+    store.users.find((x) => x.id === user.id).area_id = areaId(area);
     let done = 0;
-    for (const c of created) for (const l of c.lessons) {
+    for (const c of created.filter((cc) => isForArea(cc, areaId(area)))) for (const l of c.lessons) {
       if (done >= n) break;
       if (l.type === 'quiz') submitQuiz(user.id, l.id, l.questions.map((qq, i) => (i === 0 && n === 3 ? (qq.correct_index + 1) % qq.options.length : qq.correct_index)));
       else completeLesson(user.id, l.id);
       done++;
     }
   }
+  // Persona recién ingresada, sin área: muestra el primer paso del recorrido.
+  users.login({ email: 'andrea.torres@plataform.com', name: 'Andrea Torres' });
   store.sessions = {};
   persist();
 }
@@ -766,13 +833,35 @@ function route(method, path, body, token) {
   }
   if (method === 'POST' && pathname === '/api/auth/logout') { delete store.sessions[token]; return { ok: true }; }
   if (method === 'GET' && pathname === '/api/me') { need(); return { user: publicUser(user), stats: myStats(user.id) }; }
+  if (method === 'POST' && pathname === '/api/me/area') {
+    need();
+    const a = selectableArea(String(body?.area_id ?? ''));
+    user.area_id = a.id;
+    return { ok: true, area: { id: a.id, name: a.name, icon: a.icon } };
+  }
+  if (method === 'GET' && pathname === '/api/areas') { need(); return listAreas(user.role === 'admin' && params.get('all') === '1'); }
+  if (method === 'POST' && pathname === '/api/areas') {
+    admin();
+    const a = { id: uid(), name: cleanAreaName(body?.name), icon: String(body?.icon || '🏢').slice(0, 8), active: 1, created_at: nowIso() };
+    store.areas.push(a);
+    return a;
+  }
+  if (method === 'PUT' && (r = m(/^\/api\/areas\/([\w-]+)$/))) {
+    admin();
+    const a = areaById(r[1]);
+    if (!a) throw httpError(404, 'Área no encontrada.');
+    if (body?.name !== undefined) a.name = cleanAreaName(body.name, a.id);
+    if (body?.icon !== undefined) a.icon = String(body.icon || '🏢').slice(0, 8);
+    if (body?.active !== undefined) a.active = body.active ? 1 : 0;
+    return a;
+  }
   if (method === 'GET' && pathname === '/api/health') return { ok: true };
 
   if (method === 'GET' && pathname === '/api/courses') {
     need();
     const all = user.role === 'admin' && params.get('all') === '1';
-    return store.courses.filter((c) => (all ? c.status !== 'archived' : c.status === 'published')).sort((a, b) => b.updated_at.localeCompare(a.updated_at)).map((c) => ({
-      ...c, lessons: undefined, generated_by_ai: !!c.generated_by_ai, lesson_count: c.lessons.length,
+    return store.courses.filter((c) => (all ? c.status !== 'archived' : c.status === 'published' && isForArea(c, user.area_id))).sort((a, b) => b.updated_at.localeCompare(a.updated_at)).map((c) => ({
+      ...c, lessons: undefined, areas: areaPublic(c), generated_by_ai: !!c.generated_by_ai, lesson_count: c.lessons.length,
       total_min: c.lessons.reduce((s, l) => s + l.duration_min, 0), done_count: c.lessons.filter((l) => isDone(user.id, l.id)).length,
     }));
   }
@@ -781,7 +870,7 @@ function route(method, path, body, token) {
     if (method === 'GET') {
       need();
       const isAdmin = user.role === 'admin';
-      if (!c || (!isAdmin && c.status !== 'published')) throw httpError(404, 'Curso no encontrado.');
+      if (!c || (!isAdmin && (c.status !== 'published' || !isForArea(c, user.area_id)))) throw httpError(404, 'Curso no encontrado.');
       return { ...courseView(c, { withAnswers: isAdmin }), progress: progressFor(user.id, c) };
     }
     if (method === 'PUT') { admin(); return updateCourse(r[1], body, { userId: user.id, changeNote: String(body.change_note ?? '').trim() || 'Edición manual', sourceIds: body.source_ids ?? [] }); }
@@ -813,7 +902,7 @@ function route(method, path, body, token) {
     const answers = Array.isArray(body?.answers) ? body.answers.map((a) => (a === null ? null : Number(a))) : [];
     return submitQuiz(user.id, r[1], answers);
   }
-  if (method === 'GET' && pathname === '/api/leaderboard') { need(); return leaderboard(20); }
+  if (method === 'GET' && pathname === '/api/leaderboard') { need(); return leaderboard(20, params.get('scope') === 'area' ? user.area_id : null); }
 
   if (method === 'POST' && pathname === '/api/sources/url') { admin(); throw httpError(400, 'En la demostración el navegador no puede leer páginas web externas. En la versión instalada esta opción funciona; aquí puedes copiar el texto de la página y pegarlo abajo.'); }
   if (method === 'POST' && pathname === '/api/sources/text') {
@@ -825,6 +914,13 @@ function route(method, path, body, token) {
   if (method === 'GET' && pathname === '/api/admin/users') {
     admin();
     return store.users.map((u) => ({ ...publicUser(u), active: u.active, created_at: u.created_at, xp: xpOf(u.id), lessons_done: store.progress.filter((p) => p.user_id === u.id).length }));
+  }
+  if (method === 'POST' && (r = m(/^\/api\/admin\/users\/([\w-]+)\/area$/))) {
+    admin();
+    const u = store.users.find((x) => x.id === r[1]);
+    if (!u) throw httpError(404, 'Persona no encontrada.');
+    u.area_id = body?.area_id ? selectableArea(String(body.area_id)).id : null;
+    return { ok: true };
   }
   if (method === 'POST' && (r = m(/^\/api\/admin\/users\/([\w-]+)\/role$/))) {
     admin();
@@ -891,7 +987,7 @@ async function routeAsync(method, path, body, token) {
     if (!sources.length) throw httpError(400, 'Agrega al menos una fuente.');
     const lessonCount = Math.min(15, Math.max(2, Number(body?.lesson_count) || 6));
     const draft = await generateWithAi(sources, String(body?.instructions ?? ''), lessonCount);
-    const course = createCourse(draft, { userId: user.id, generatedByAi: draft.mode === 'ai', sourceIds: ids });
+    const course = createCourse({ ...draft, area_ids: body?.area_ids ?? [] }, { userId: user.id, generatedByAi: draft.mode === 'ai', sourceIds: ids });
     return { course, mode: draft.mode, summary: draft.change_summary, truncated: draft.truncated };
   }
   if (method === 'POST' && (r = pathname.match(/^\/api\/courses\/([\w-]+)\/ai-update$/))) {
@@ -946,7 +1042,10 @@ window.EventSource = class DemoEventSource {
 
 const demo = {
   reset() { try { localStorage.removeItem(DEMO_KEY); } catch { /* ignorado */ } seed(); },
-  loginAs(email) { return users.login({ email }); },
+  loginAs(email, { resetArea = false } = {}) {
+    if (resetArea) { const u = users.byEmail(email); if (u) u.area_id = null; persist(); }
+    return users.login({ email });
+  },
   roomAvailable: async () => !!(await roomPromise),
   aiAvailable: async () => !!(await samplePromise),
 };

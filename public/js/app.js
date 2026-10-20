@@ -1,8 +1,8 @@
 import { api, session } from './api.js';
 import { h } from './ui.js';
-import { renderLogin, renderHome, renderCourse } from './views/learner.js';
+import { renderLogin, renderHome, renderCourse, renderAreaPicker } from './views/learner.js';
 import { renderJoin, renderHost } from './views/game.js';
-import { renderAdminDashboard, renderAdminCourses, renderEditor, renderAiWizard, renderUsers } from './views/admin.js';
+import { renderAdminDashboard, renderAdminCourses, renderEditor, renderAiWizard, renderUsers, renderAreas } from './views/admin.js';
 
 const main = document.getElementById('main');
 const nav = document.getElementById('nav');
@@ -12,6 +12,7 @@ const routes = [
   { re: /^\/host\/(\d{6})$/, view: renderHost, admin: true, bare: true },
   { re: /^\/login$/, view: renderLogin, public: true, bare: true },
   { re: /^\/$/, view: renderHome },
+  { re: /^\/area$/, view: renderAreaPicker },
   { re: /^\/curso\/([\w-]+)(?:\/leccion\/([\w-]+))?$/, view: renderCourse },
   { re: /^\/admin$/, view: renderAdminDashboard, admin: true },
   { re: /^\/admin\/cursos$/, view: renderAdminCourses, admin: true },
@@ -19,6 +20,7 @@ const routes = [
   { re: /^\/admin\/nuevo$/, view: renderEditor, admin: true },
   { re: /^\/admin\/curso\/([\w-]+)$/, view: renderEditor, admin: true },
   { re: /^\/admin\/usuarios$/, view: renderUsers, admin: true },
+  { re: /^\/admin\/areas$/, view: renderAreas, admin: true },
 ];
 
 let renderToken = 0;
@@ -64,6 +66,8 @@ export async function router() {
     return;
   }
   if (route.admin && user?.role !== 'admin') { location.hash = '#/'; return; }
+  // Sin área elegida no hay catálogo que mostrar: primero se elige el área.
+  if (user && !user.area_id && (path === '/' || path.startsWith('/curso'))) { location.hash = '#/area'; return; }
   document.body.classList.toggle('bare', !!route.bare);
   renderNav();
   const params = path.match(route.re).slice(1);

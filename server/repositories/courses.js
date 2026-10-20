@@ -21,10 +21,26 @@ export function createCoursesRepo(db) {
       questions: l.type === 'quiz' ? questionsFor(l.id, { withAnswers }) : [],
     }));
     const sources = db.prepare('SELECT id, kind, name, char_count, created_at FROM sources WHERE course_id = ? ORDER BY created_at').all(id);
-    return { ...course, generated_by_ai: !!course.generated_by_ai, lessons, sources };
+    const areas = areasOf(id);
+    return { ...course, generated_by_ai: !!course.generated_by_ai, area_ids: areas.map((a) => a.id), areas, lessons, sources };
   }
 
-  function listCourses({ includeUnpublished = false, userId = null } = {}) {
+  function areasOf(courseId) {
+    return db.prepare(`SELECT a.id, a.name, a.icon FROM course_areas ca JOIN areas a ON a.id = ca.area_id
+      WHERE ca.course_id = ? ORDER BY a.name COLLATE NOCASE`).all(courseId);
+  }
+
+  // Un curso sin áreas es para toda la empresa; si tiene áreas, solo para esas.
+  function isForArea(courseId, areaId) {
+    const rows = db.prepare('SELECT area_id FROM course_areas WHERE course_id = ?').all(courseId);
+    return rows.length === 0 || rows.some((r) => r.area_id === areaId);
+  }
+
+  function listCourses({ includeUnpublished = false, userId = null, areaId = null } = {}) {
+    // Vista de aprendiz: solo cursos de toda la empresa o de su área.
+    const where = includeUnpublished ? "c.status != 'archived'" : `c.status = 'published'
+      AND (NOT EXISTS (SELECT 1 FROM course_areas ca WHERE ca.course_id = c.id)
+        OR EXISTS (SELECT 1 FROM course_areas ca WHERE ca.course_id = c.id AND ca.area_id = ?))`;
     const rows = db.prepare(`
       SELECT c.*,
         (SELECT COUNT(*) FROM lessons l WHERE l.course_id = c.id) AS lesson_count,
@@ -32,9 +48,12 @@ export function createCoursesRepo(db) {
         (SELECT COUNT(*) FROM lessons l JOIN lesson_progress p ON p.lesson_id = l.id
            WHERE l.course_id = c.id AND p.user_id = ?) AS done_count
       FROM courses c
-      WHERE ${includeUnpublished ? "c.status != 'archived'" : "c.status = 'published'"}
-      ORDER BY c.updated_at DESC`).all(userId ?? '');
-    return rows.map((r) => ({ ...r, generated_by_ai: !!r.generated_by_ai }));
+      WHERE ${where}
+      ORDER BY c.updated_at DESC`).all(...(includeUnpublished ? [userId ?? ''] : [userId ?? '', areaId ?? '']));
+    return rows.map((r) => {
+      const areas = areasOf(r.id);
+      return { ...r, generated_by_ai: !!r.generated_by_ai, area_ids: areas.map((a) => a.id), areas };
+    });
   }
 
   function normalizeTree(tree) {
@@ -62,9 +81,14 @@ export function createCoursesRepo(db) {
         duration_min: clamp(Number(l.duration_min) || 5, 1, 600), questions,
       };
     });
+    const rawAreas = Array.isArray(tree.area_ids) ? tree.area_ids : (tree.areas ?? []).map((a) => a.id);
+    const areaIds = [...new Set(rawAreas.map(String))];
+    for (const aid of areaIds) {
+      if (!db.prepare('SELECT 1 FROM areas WHERE id = ?').get(aid)) throw Object.assign(new Error('Una de las áreas elegidas no existe.'), { status: 400 });
+    }
     return {
       title: tree.title.trim(), description: tree.description ?? '', category: tree.category?.trim() || 'General',
-      cover_emoji: tree.cover_emoji || '📘', lessons,
+      cover_emoji: tree.cover_emoji || '📘', lessons, area_ids: areaIds,
     };
   }
 
@@ -94,6 +118,11 @@ export function createCoursesRepo(db) {
     for (const oldId of existingIds) if (!keptIds.has(oldId)) db.prepare('DELETE FROM lessons WHERE id = ?').run(oldId);
   }
 
+  function writeAreas(courseId, areaIds) {
+    db.prepare('DELETE FROM course_areas WHERE course_id = ?').run(courseId);
+    for (const aid of areaIds) db.prepare('INSERT INTO course_areas (course_id, area_id) VALUES (?, ?)').run(courseId, aid);
+  }
+
   function snapshot(courseId, changeNote, userId) {
     const current = getCourse(courseId, { withAnswers: true });
     db.prepare('INSERT INTO course_versions (id, course_id, version, change_note, snapshot_json, created_by, created_at) VALUES (?,?,?,?,?,?,?)')
@@ -108,6 +137,7 @@ export function createCoursesRepo(db) {
       db.prepare('INSERT INTO courses (id, title, description, category, cover_emoji, status, version, generated_by_ai, created_by, created_at, updated_at) VALUES (?,?,?,?,?,\'draft\',1,?,?,?,?)')
         .run(id, data.title, data.description, data.category, data.cover_emoji, generatedByAi ? 1 : 0, userId, ts, ts);
       writeLessons(id, data.lessons);
+      writeAreas(id, data.area_ids);
       for (const sid of sourceIds) db.prepare('UPDATE sources SET course_id = ? WHERE id = ?').run(id, sid);
       snapshot(id, generatedByAi ? 'Versión inicial generada con IA' : 'Versión inicial', userId);
     });
@@ -123,6 +153,7 @@ export function createCoursesRepo(db) {
       db.prepare('UPDATE courses SET title=?, description=?, category=?, cover_emoji=?, version=version+1, updated_at=? WHERE id=?')
         .run(data.title, data.description, data.category, data.cover_emoji, now(), id);
       writeLessons(id, data.lessons);
+      writeAreas(id, data.area_ids);
       for (const sid of sourceIds) db.prepare('UPDATE sources SET course_id = ? WHERE id = ?').run(id, sid);
       snapshot(id, changeNote, userId);
     });
@@ -158,7 +189,7 @@ export function createCoursesRepo(db) {
     return ids.map((id) => db.prepare('SELECT * FROM sources WHERE id = ?').get(id)).filter(Boolean);
   }
 
-  return { getCourse, listCourses, createCourse, updateCourse, setStatus, listVersions, restoreVersion, saveSource, getSources, normalizeTree };
+  return { getCourse, listCourses, isForArea, createCourse, updateCourse, setStatus, listVersions, restoreVersion, saveSource, getSources, normalizeTree };
 }
 
 function clamp(n, min, max) { return Math.min(max, Math.max(min, Math.round(n))); }

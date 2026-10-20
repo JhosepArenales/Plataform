@@ -19,6 +19,7 @@ function uploadWithProgress(path, form, onProgress) {
 
 const DEMO_VIDEOS = {
   'demo:bienvenida': { title: 'Bienvenida del gerente general', scenes: ['Hola y bienvenido a Plataform 👋', 'Ayudamos a las empresas a operar mejor', 'Cliente primero · Simple antes que complejo', 'Medimos antes de cambiar', '¡Nos alegra que estés aquí!'] },
+  'demo:negociacion': { title: 'Negociar no es ganar: es acordar', scenes: ['¿Qué necesita realmente el cliente? 🤔', 'Escucha antes de proponer', 'Una objeción es una pregunta disfrazada', 'Precio y alcance se mueven juntos', '¡Cierra acuerdos que convienen a ambos!'] },
   'demo:phishing': { title: 'Cómo reconocer un correo de phishing', scenes: ['¿Ese correo es real? 🎣', 'Señal 1: remitente extraño', 'Señal 2: urgencia artificial', 'Señal 3: enlaces que no coinciden', 'Ante la duda: repórtalo a Tecnología'] },
 };
 
@@ -95,8 +96,8 @@ function renderHost(pin) {
 
 // Barra superior de la demostración: cambiar de perfil y reiniciar.
 function mountDemoBar() {
-  const asRole = async (email, target) => {
-    const r = demo.loginAs(email);
+  const asRole = async (email, target, opts) => {
+    const r = demo.loginAs(email, opts);
     session.token = r.token;
     session.user = r.user;
     if (location.hash === target) router(); else location.hash = target;
@@ -104,7 +105,7 @@ function mountDemoBar() {
   const bar = h('div', { class: 'demo-bar', role: 'region', 'aria-label': 'Demostración' },
     h('span', { class: 'demo-pill' }, 'Demostración interactiva'),
     h('span', { class: 'demo-label' }, 'Ver como:'),
-    h('button', { class: 'demo-btn', onclick: () => asRole('luis.perez@plataform.com', '#/') }, '🧑‍🎓 Persona nueva'),
+    h('button', { class: 'demo-btn', onclick: () => asRole('andrea.torres@plataform.com', '#/area', { resetArea: true }) }, '🧑‍🎓 Persona nueva'),
     h('button', { class: 'demo-btn', onclick: () => asRole('ana.gomez@plataform.com', '#/admin') }, '🛠️ Administradora'),
     h('button', { class: 'demo-btn', onclick: () => { location.hash = '#/jugar'; } }, '📱 Jugador'),
     h('button', { class: 'demo-btn ghost', onclick: async () => {

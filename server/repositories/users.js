@@ -39,8 +39,13 @@ export function createUsersRepo(db, { adminEmails = [] } = {}) {
   function userForToken(token) {
     if (!token) return null;
     return db.prepare(`
-      SELECT u.* FROM sessions s JOIN users u ON u.id = s.user_id
+      SELECT u.*, a.name AS area_name, a.icon AS area_icon FROM sessions s JOIN users u ON u.id = s.user_id
+      LEFT JOIN areas a ON a.id = u.area_id
       WHERE s.token = ? AND s.expires_at > ? AND u.active = 1`).get(token, now()) ?? null;
+  }
+
+  function setArea(userId, areaId) {
+    db.prepare('UPDATE users SET area_id = ? WHERE id = ?').run(areaId, userId);
   }
 
   function deleteSession(token) {
@@ -49,7 +54,7 @@ export function createUsersRepo(db, { adminEmails = [] } = {}) {
 
   function list() {
     return db.prepare(`
-      SELECT u.id, u.email, u.name, u.role, u.active, u.created_at,
+      SELECT u.id, u.email, u.name, u.role, u.active, u.created_at, u.area_id,
         COALESCE((SELECT SUM(points) FROM xp_events x WHERE x.user_id = u.id), 0) AS xp,
         (SELECT COUNT(*) FROM lesson_progress p WHERE p.user_id = u.id) AS lessons_done
       FROM users u ORDER BY u.created_at`).all();
@@ -59,5 +64,5 @@ export function createUsersRepo(db, { adminEmails = [] } = {}) {
     db.prepare('UPDATE users SET role = ? WHERE id = ?').run(role, id);
   }
 
-  return { findByEmail, upsertOnLogin, createSession, userForToken, deleteSession, list, setRole };
+  return { findByEmail, upsertOnLogin, createSession, userForToken, deleteSession, list, setRole, setArea };
 }

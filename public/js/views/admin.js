@@ -8,8 +8,24 @@ function adminTabs(active) {
   const tab = (href, label, key) => h('a', { href: `#${href}`, class: `tab ${active === key ? 'active' : ''}` }, label);
   return h('div', { class: 'admin-bar' },
     h('span', { class: 'admin-pill' }, 'Modo administrador'),
-    h('nav', { class: 'tabs' }, tab('/admin', 'Panel', 'dash'), tab('/admin/cursos', 'Cursos', 'courses'), tab('/admin/ia', '✨ Crear con IA', 'ai'), tab('/admin/usuarios', 'Personas', 'users')));
+    h('nav', { class: 'tabs' }, tab('/admin', 'Panel', 'dash'), tab('/admin/cursos', 'Cursos', 'courses'), tab('/admin/ia', '✨ Crear con IA', 'ai'), tab('/admin/usuarios', 'Personas', 'users'), tab('/admin/areas', 'Áreas', 'areas')));
 }
+
+// Selector "¿Para quién es este curso?": toda la empresa o una o varias áreas.
+function audiencePicker(areas, selected, onChange) {
+  const chosen = new Set(selected ?? []);
+  const host = h('div', { class: 'chips audience-picker', role: 'group', 'aria-label': 'Áreas del curso' });
+  const paint = () => host.replaceChildren(
+    h('button', { type: 'button', class: `chip ${chosen.size === 0 ? 'active' : ''}`, 'aria-pressed': String(chosen.size === 0), onclick: () => { chosen.clear(); paint(); onChange([]); } }, '🌎 Toda la empresa'),
+    ...areas.map((a) => h('button', {
+      type: 'button', class: `chip ${chosen.has(a.id) ? 'active' : ''}`, 'aria-pressed': String(chosen.has(a.id)),
+      onclick: () => { chosen.has(a.id) ? chosen.delete(a.id) : chosen.add(a.id); paint(); onChange([...chosen]); },
+    }, `${a.icon} ${a.name}`)));
+  paint();
+  return host;
+}
+
+const audienceText = (c) => (c.areas?.length ? c.areas.map((a) => `${a.icon} ${a.name}`).join(' · ') : '🌎 Toda la empresa');
 
 // ---------- Panel ----------
 export async function renderAdminDashboard() {
@@ -28,6 +44,13 @@ export async function renderAdminDashboard() {
       kpi('Cursos publicados', published.length, `${m.courses.length - published.length} en borrador`),
       kpi('Finalización promedio', `${avgCompletion}%`, 'de quienes empezaron un curso'),
       kpi('Nota promedio en quizzes', avgQuiz == null ? '—' : `${avgQuiz}%`, 'meta sugerida: ≥ 80%')),
+    h('div', { class: 'card' },
+      h('div', { class: 'section-head' }, h('h2', {}, 'Avance por área'), h('a', { class: 'btn btn-ghost btn-sm', href: '#/admin/areas' }, 'Gestionar áreas')),
+      m.people_without_area > 0 && h('p', { class: 'small muted' }, `${m.people_without_area} persona(s) todavía no eligen área (se les pedirá al ingresar).`),
+      h('div', { class: 'area-stats' }, m.areas.map((a) => h('div', { class: 'area-stat' },
+        h('div', { class: 'row' }, h('span', { class: 'area-icon sm' }, a.icon), h('strong', { class: 'grow' }, a.name), h('span', { class: 'small muted' }, `${a.people} ${a.people === 1 ? 'persona' : 'personas'}`)),
+        h('div', { class: 'mini-progress' }, h('span', { style: { width: `${a.avg_progress ?? 0}%` } })),
+        h('span', { class: 'small muted' }, a.people ? `${a.avg_progress}% de avance promedio · ${a.assigned_lessons} lecciones asignadas` : `Sin personas aún · ${a.assigned_lessons} lecciones asignadas`))))),
     attention.length > 0 && h('div', { class: 'card callout' },
       h('h3', {}, '⚠️ Necesitan atención'),
       h('ul', {}, attention.map((c) => h('li', {}, h('a', { href: `#/admin/curso/${c.id}` }, c.title), ' — ',
@@ -57,7 +80,7 @@ export async function renderAdminCourses() {
         h('h3', {}, c.title),
         h('div', { class: 'row small muted' },
           h('span', { class: `status status-${c.status}` }, STATUS[c.status]),
-          h('span', {}, `v${c.version}`), h('span', {}, `${c.lesson_count} lecciones`),
+          h('span', {}, `v${c.version}`), h('span', {}, `${c.lesson_count} lecciones`), h('span', { class: 'audience' }, audienceText(c)),
           c.generated_by_ai && h('span', { class: 'tag' }, '✨ IA'), h('span', {}, `Actualizado ${formatDate(c.updated_at)}`))),
       h('div', { class: 'row' },
         h('button', { class: 'btn btn-secondary btn-sm', onclick: (e) => launchGame(c.id, e.currentTarget) }, '🎮 Juego en vivo'),
@@ -133,7 +156,8 @@ function sourceCollector() {
 
 // ---------- Asistente IA ----------
 export async function renderAiWizard() {
-  const status = await api('/api/ai/status');
+  const [status, areas] = await Promise.all([api('/api/ai/status'), api('/api/areas')]);
+  let areaIds = [];
   const collector = sourceCollector();
   const instructions = h('textarea', { rows: 3, placeholder: 'Ej.: "Enfócate en lo que un vendedor nuevo necesita en su primera semana. Tono cercano. Incluye casos prácticos."' });
   const count = h('input', { type: 'number', min: 2, max: 15, value: 6 });
@@ -142,7 +166,7 @@ export async function renderAiWizard() {
     const ids = collector.ids();
     if (!ids.length) return toast('Agrega al menos una fuente.', 'error');
     try {
-      const r = await busy(genBtn, () => api('/api/ai/generate', { method: 'POST', body: { source_ids: ids, instructions: instructions.value, lesson_count: Number(count.value) } }), 'La IA está creando tu curso… (puede tardar 1–2 min)');
+      const r = await busy(genBtn, () => api('/api/ai/generate', { method: 'POST', body: { source_ids: ids, instructions: instructions.value, lesson_count: Number(count.value), area_ids: areaIds } }), 'La IA está creando tu curso… (puede tardar 1–2 min)');
       toast(r.mode === 'ai' ? 'Curso generado. Revísalo y publícalo.' : 'Borrador básico generado. Revísalo antes de publicar.', 'success');
       if (r.truncated) toast('Parte del material era muy extenso y se recortó.', 'error');
       location.hash = `#/admin/curso/${r.course.id}`;
@@ -153,7 +177,10 @@ export async function renderAiWizard() {
     h('p', { class: 'muted' }, 'Sube tus manuales, políticas, presentaciones o planillas. La IA arma lecciones cortas y quizzes; tú revisas y publicas.'),
     !status.available && h('div', { class: 'card callout warn' }, h('strong', {}, 'IA no disponible. '), status.hint ?? 'Se generará un borrador básico (secciones + preguntas de completar). Para cursos con redacción y preguntas de calidad, configura ANTHROPIC_API_KEY en el servidor.'),
     h('div', { class: 'card stack' }, h('h3', {}, '1. Material de origen'), collector.el),
-    h('div', { class: 'card stack' }, h('h3', {}, '2. Indicaciones (opcional)'), instructions,
+    h('div', { class: 'card stack' }, h('h3', {}, '2. ¿Para quién es el curso?'),
+      h('p', { class: 'small muted' }, 'Solo lo verán las personas de las áreas elegidas. "Toda la empresa" lo muestra a todos.'),
+      audiencePicker(areas, [], (ids) => { areaIds = ids; })),
+    h('div', { class: 'card stack' }, h('h3', {}, '3. Indicaciones (opcional)'), instructions,
       h('label', { class: 'field inline' }, 'Lecciones aproximadas', count)),
     h('div', { class: 'center' }, genBtn));
 }
@@ -162,8 +189,9 @@ export async function renderAiWizard() {
 export async function renderEditor(courseId) {
   const isNew = !courseId;
   const course = isNew
-    ? { title: '', description: '', category: 'Inducción', cover_emoji: '📘', status: 'draft', version: 0, lessons: [], sources: [] }
+    ? { title: '', description: '', category: 'Inducción', cover_emoji: '📘', status: 'draft', version: 0, lessons: [], sources: [], area_ids: [] }
     : await api(`/api/courses/${courseId}`);
+  const areas = await api('/api/areas?all=1');
   const state = structuredClone(course);
   let dirty = false;
   let pendingNote = '';
@@ -303,6 +331,8 @@ export async function renderEditor(courseId) {
       field('Título del curso', 'title', { placeholder: 'Ej.: Bienvenida a la empresa' }),
       field('Categoría', 'category', { placeholder: 'Inducción, Ventas, Seguridad…', list: 'cat-list' })),
     field('Descripción', 'description', { tag: 'textarea', rows: 2, placeholder: '¿Qué aprenderá la persona?' }),
+    h('div', { class: 'field' }, '¿Para quién es este curso?',
+      audiencePicker(areas.filter((a) => a.active || state.area_ids?.includes(a.id)), state.area_ids, (ids) => { state.area_ids = ids; markDirty(); })),
   ];
   const metaHost = h('div', { class: 'stack' }, ...metaFields());
   paintLessons();
@@ -398,16 +428,25 @@ function questionsEditor(l, markDirty) {
 
 // ---------- Personas ----------
 export async function renderUsers() {
-  const users = await api('/api/admin/users');
+  const [users, areas] = await Promise.all([api('/api/admin/users'), api('/api/areas')]);
+  const areaSelect = (u) => h('select', { 'aria-label': `Área de ${u.name}`, onchange: async (e) => {
+    const sel = e.target;
+    const previous = u.area_id;
+    try {
+      await api(`/api/admin/users/${u.id}/area`, { method: 'POST', body: { area_id: sel.value || null } });
+      u.area_id = sel.value || null;
+      toast(`Área de ${u.name} actualizada`, 'success');
+    } catch (err) { sel.value = previous ?? ''; toast(err.message, 'error'); }
+  } }, h('option', { value: '', selected: !u.area_id }, 'Sin área'), areas.map((a) => h('option', { value: a.id, selected: a.id === u.area_id }, `${a.icon} ${a.name}`)));
   return h('div', { class: 'page' }, adminTabs('users'),
     h('h1', {}, 'Personas'),
     h('p', { class: 'muted' }, 'Cada persona entra con su correo. Puedes dar permisos de administración para que otros creen y actualicen cursos.'),
     h('div', { class: 'card table-wrap' }, h('table', { class: 'table' },
-      h('thead', {}, h('tr', {}, ['Nombre', 'Correo', 'Lecciones', 'XP', 'Rol', ''].map((t) => h('th', {}, t)))),
+      h('thead', {}, h('tr', {}, ['Nombre', 'Correo', 'Área', 'Lecciones', 'XP', 'Rol', ''].map((t) => h('th', {}, t)))),
       h('tbody', {}, users.map((u) => {
         const roleCell = h('td', {}, h('span', { class: `status ${u.role === 'admin' ? 'status-published' : 'status-draft'}` }, u.role === 'admin' ? 'Administrador' : 'Aprendiz'));
         return h('tr', {},
-          h('td', {}, u.name), h('td', {}, u.email), h('td', {}, u.lessons_done), h('td', {}, u.xp), roleCell,
+          h('td', {}, u.name), h('td', {}, u.email), h('td', {}, areaSelect(u)), h('td', {}, u.lessons_done), h('td', {}, u.xp), roleCell,
           h('td', {}, u.id !== session.user.id && h('button', { class: 'btn btn-ghost btn-sm', onclick: async (e) => {
             const btn = e.currentTarget; // el evento pierde currentTarget tras el await
             const target = u.role === 'admin' ? 'learner' : 'admin';
@@ -422,4 +461,56 @@ export async function renderUsers() {
             } catch (err) { toast(err.message, 'error'); }
           } }, u.role === 'admin' ? 'Quitar admin' : 'Hacer admin')));
       })))));
+}
+
+// ---------- Áreas ----------
+export async function renderAreas() {
+  const areas = await api('/api/areas?all=1');
+  const list = h('div', { class: 'stack' });
+  const row = (a) => {
+    const name = h('input', { value: a.name, maxlength: 40, 'aria-label': 'Nombre del área' });
+    const icon = h('input', { value: a.icon, maxlength: 4, class: 'icon-input', 'aria-label': 'Ícono' });
+    const save = h('button', { class: 'btn btn-ghost btn-sm' }, 'Guardar');
+    save.addEventListener('click', async () => {
+      try {
+        const r = await busy(save, () => api(`/api/areas/${a.id}`, { method: 'PUT', body: { name: name.value, icon: icon.value } }));
+        Object.assign(a, r);
+        toast('Área actualizada', 'success');
+      } catch (err) { toast(err.message, 'error'); }
+    });
+    const toggle = h('button', { class: `btn btn-sm ${a.active ? 'btn-ghost' : 'btn-secondary'}` }, a.active ? 'Desactivar' : 'Activar');
+    toggle.addEventListener('click', async () => {
+      if (a.active && !await confirmAction('Desactivar área', `"${a.name}" dejará de aparecer para elegir. Las ${a.people} persona(s) que ya la tienen la conservan, y sus cursos siguen asignados.`, 'Desactivar', true)) return;
+      try {
+        const r = await busy(toggle, () => api(`/api/areas/${a.id}`, { method: 'PUT', body: { active: !a.active } }));
+        a.active = !!r.active;
+        el.replaceWith(row(a));
+      } catch (err) { toast(err.message, 'error'); }
+    });
+    const el = h('div', { class: `card area-row ${a.active ? '' : 'inactive'}` },
+      icon, name,
+      h('span', { class: 'small muted area-counts' }, `${a.people} ${a.people === 1 ? 'persona' : 'personas'} · ${a.courses} ${a.courses === 1 ? 'curso propio' : 'cursos propios'}`),
+      !a.active && h('span', { class: 'status status-archived' }, 'Inactiva'),
+      h('div', { class: 'row' }, save, toggle));
+    return el;
+  };
+  list.append(...areas.map(row));
+
+  const newName = h('input', { placeholder: 'Ej.: Logística', maxlength: 40, 'aria-label': 'Nombre de la nueva área' });
+  const newIcon = h('input', { value: '🏢', maxlength: 4, class: 'icon-input', 'aria-label': 'Ícono de la nueva área' });
+  const addBtn = h('button', { class: 'btn btn-primary' }, 'Agregar área');
+  addBtn.addEventListener('click', async () => {
+    try {
+      const r = await busy(addBtn, () => api('/api/areas', { method: 'POST', body: { name: newName.value, icon: newIcon.value } }));
+      list.append(row({ ...r, active: true, people: 0, courses: 0 }));
+      newName.value = '';
+      toast(`Área "${r.name}" creada`, 'success');
+    } catch (err) { toast(err.message, 'error'); }
+  });
+
+  return h('div', { class: 'page narrow' }, adminTabs('areas'),
+    h('h1', {}, 'Áreas'),
+    h('p', { class: 'muted' }, 'Cada persona elige su área al ingresar y ve los cursos de su área más los de toda la empresa. Usa una lista fija para que no haya variantes del mismo nombre.'),
+    h('div', { class: 'card area-row add' }, newIcon, newName, addBtn),
+    list);
 }

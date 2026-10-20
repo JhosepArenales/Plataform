@@ -38,10 +38,42 @@ export function renderLogin() {
   return h('div', { class: 'login-wrap' }, form);
 }
 
+// ---------- Elegir área ----------
+export async function renderAreaPicker() {
+  const areas = await api('/api/areas');
+  const current = session.user.area_id;
+  const first = !current;
+  const grid = h('div', { class: 'area-grid' }, areas.map((a) => h('button', {
+    class: `area-card ${a.id === current ? 'selected' : ''}`, type: 'button',
+    onclick: async (e) => {
+      const btn = e.currentTarget;
+      grid.querySelectorAll('.area-card').forEach((b) => { b.disabled = true; b.classList.toggle('selected', b === btn); });
+      try {
+        const r = await api('/api/me/area', { method: 'POST', body: { area_id: a.id } });
+        Object.assign(session.user, { area_id: r.area.id, area_name: r.area.name, area_icon: r.area.icon });
+        toast(first ? `¡Listo! Estos son los cursos de ${r.area.name}` : `Ahora ves los cursos de ${r.area.name}`, 'success');
+        location.hash = '#/';
+      } catch (err) {
+        grid.querySelectorAll('.area-card').forEach((b) => { b.disabled = false; });
+        toast(err.message, 'error');
+      }
+    },
+  }, h('span', { class: 'area-icon' }, a.icon), h('strong', {}, a.name))));
+  return h('div', { class: 'page narrow area-page' },
+    h('p', { class: 'eyebrow' }, first ? 'Antes de empezar' : 'Tu área'),
+    h('h1', {}, first ? `¡Hola, ${session.user.name.split(' ')[0]}! ¿En qué área vas a trabajar?` : 'Cambiar de área'),
+    h('p', { class: 'muted' }, 'Te mostraremos los cursos de tu área y los que son para toda la empresa. Puedes cambiarla cuando quieras.'),
+    grid,
+    !first && h('a', { href: '#/', class: 'small' }, '← Volver sin cambiar'),
+    first && session.user.role === 'admin' && h('a', { href: '#/admin', class: 'small' }, 'Ahora no, ir a la administración'));
+}
+
 // ---------- Inicio ----------
 export async function renderHome() {
-  const [courses, me, board] = await Promise.all([api('/api/courses'), api('/api/me'), api('/api/leaderboard')]);
+  const [courses, me, areaBoard] = await Promise.all([api('/api/courses'), api('/api/me'), api('/api/leaderboard?scope=area')]);
   const { stats } = me;
+  const user = me.user;
+  Object.assign(session.user, user);
   const inProgress = courses.filter((c) => c.done_count > 0 && c.done_count < c.lesson_count);
   const categories = ['Todos', ...new Set(courses.map((c) => c.category))];
   let filter = { q: '', cat: 'Todos' };
@@ -66,6 +98,7 @@ export async function renderHome() {
       h('div', {},
         h('p', { class: 'eyebrow' }, `Nivel ${stats.level} · ${stats.name}`),
         h('h1', {}, `Hola, ${session.user.name.split(' ')[0]} ✨`),
+        user.area_id && h('p', { class: 'area-line' }, h('span', { class: 'area-pill' }, `${user.area_icon} ${user.area_name}`), h('a', { href: '#/area', class: 'small' }, 'Cambiar área')),
         h('p', { class: 'muted' }, stats.lessons_done ? `Llevas ${stats.lessons_done} lecciones completadas. ¡Sigue así!` : 'Empieza tu primer curso y gana tus primeros puntos.'),
         h('div', { class: 'xp-bar', role: 'progressbar', 'aria-valuenow': progressPct, 'aria-valuemin': 0, 'aria-valuemax': 100 }, h('span', { style: { width: `${progressPct}%` } })),
         h('p', { class: 'small muted' }, stats.next_at ? `${stats.xp} / ${stats.next_at} XP para el siguiente nivel` : `${stats.xp} XP · nivel máximo`)),
@@ -77,15 +110,29 @@ export async function renderHome() {
 
     h('div', { class: 'home-layout' },
       h('section', {},
-        h('div', { class: 'section-head' }, h('h2', {}, 'Catálogo de cursos'),
+        h('div', { class: 'section-head' }, h('h2', {}, user.area_id ? `Tus cursos de ${user.area_name}` : 'Catálogo de cursos'),
           h('input', { class: 'search', type: 'search', placeholder: 'Buscar curso…', 'aria-label': 'Buscar curso', oninput: (e) => { filter.q = e.target.value; paintGrid(); } })),
         chips, grid),
       h('aside', { class: 'side' },
         h('div', { class: 'card' }, h('h3', {}, 'Tus insignias'),
           h('div', { class: 'badges' }, stats.badges.map((b) => h('div', { class: `badge ${b.earned ? 'earned' : ''}`, title: b.desc }, h('span', { class: 'badge-icon' }, b.icon), h('span', {}, b.name))))),
-        h('div', { class: 'card' }, h('h3', {}, 'Ranking 🏆'),
-          h('ol', { class: 'leaderboard' }, board.slice(0, 8).map((r, i) => h('li', { class: r.id === session.user.id ? 'me' : '' },
-            h('span', { class: 'rank' }, ['🥇', '🥈', '🥉'][i] ?? i + 1), h('span', { class: 'lb-name' }, r.name), h('span', { class: 'lb-xp' }, `${r.xp} XP`))))))));
+        rankingCard(user, areaBoard))));
+}
+
+// Ranking con dos vistas: el área de la persona o toda la empresa.
+function rankingCard(user, areaBoard) {
+  const list = h('ol', { class: 'leaderboard' });
+  const paint = (board) => list.replaceChildren(...board.slice(0, 8).map((r, i) => h('li', { class: r.id === session.user.id ? 'me' : '' },
+    h('span', { class: 'rank' }, ['🥇', '🥈', '🥉'][i] ?? i + 1), h('span', { class: 'lb-name' }, r.name), h('span', { class: 'lb-xp' }, `${r.xp} XP`))));
+  const cache = { area: areaBoard, all: null };
+  const tabs = h('div', { class: 'seg', role: 'tablist' });
+  const tab = (key, label) => h('button', { class: key === 'area' ? 'active' : '', role: 'tab', onclick: async (e) => {
+    tabs.querySelectorAll('button').forEach((b) => b.classList.toggle('active', b === e.currentTarget));
+    try { cache[key] ??= await api('/api/leaderboard'); paint(cache[key]); } catch (err) { toast(err.message, 'error'); }
+  } }, label);
+  if (user.area_id) tabs.append(tab('area', user.area_name), tab('all', 'Toda la empresa'));
+  paint(areaBoard);
+  return h('div', { class: 'card' }, h('h3', {}, 'Ranking 🏆'), user.area_id && tabs, list);
 }
 
 function courseCard(c) {
@@ -93,7 +140,8 @@ function courseCard(c) {
   return h('a', { class: 'course-card card', href: `#/curso/${c.id}` },
     h('div', { class: 'course-cover' }, h('span', {}, c.cover_emoji)),
     h('div', { class: 'course-body' },
-      h('span', { class: 'tag' }, c.category),
+      h('div', { class: 'row' }, h('span', { class: 'tag' }, c.category),
+        h('span', { class: `audience ${c.areas?.length ? 'mine' : ''}` }, c.areas?.length ? `Para ${session.user.area_name ?? 'tu área'}` : '🌎 Toda la empresa')),
       h('h3', {}, c.title),
       h('p', { class: 'muted clamp' }, c.description),
       h('div', { class: 'course-meta' }, h('span', {}, `${c.lesson_count} lecciones`), h('span', {}, `~${c.total_min} min`)),

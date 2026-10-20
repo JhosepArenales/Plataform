@@ -6,6 +6,7 @@ import { randomBytes } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { openDatabase } from './db.js';
 import { createUsersRepo } from './repositories/users.js';
+import { createAreasRepo } from './repositories/areas.js';
 import { createCoursesRepo } from './repositories/courses.js';
 import { createLearningRepo, XP } from './repositories/learning.js';
 import { extractFromFile, extractFromUrl, extractFromText, SUPPORTED } from './services/extract.js';
@@ -26,6 +27,7 @@ export function createApp({
   const db = openDatabase(dbFile ?? path.join(dataDir, 'academia.db'));
   const users = createUsersRepo(db, { adminEmails });
   const courses = createCoursesRepo(db);
+  const areas = createAreasRepo(db);
   const learning = createLearningRepo(db);
   const games = createLiveGames({
     onFinished: ({ title, ranking }) => {
@@ -78,16 +80,30 @@ export function createApp({
 
   app.get('/api/me', auth(), (req, res) => res.json({ user: publicUser(req.user), stats: learning.myStats(req.user.id) }));
 
+  // La persona elige (o cambia) su área; define qué cursos ve.
+  app.post('/api/me/area', auth(), wrap((req, res) => {
+    const area = areas.assertSelectable(String(req.body?.area_id ?? ''));
+    users.setArea(req.user.id, area.id);
+    res.json({ ok: true, area: { id: area.id, name: area.name, icon: area.icon } });
+  }));
+
+  // ---------- Áreas ----------
+  app.get('/api/areas', auth(), (req, res) => res.json(areas.list({ includeInactive: req.user.role === 'admin' && req.query.all === '1' })));
+  app.post('/api/areas', auth(), adminOnly, wrap((req, res) => res.status(201).json(areas.create(req.body ?? {}))));
+  app.put('/api/areas/:id', auth(), adminOnly, wrap((req, res) => res.json(areas.update(req.params.id, req.body ?? {}))));
+
   // ---------- Cursos ----------
   app.get('/api/courses', auth(), (req, res) => {
     const includeUnpublished = req.user.role === 'admin' && req.query.all === '1';
-    res.json(courses.listCourses({ includeUnpublished, userId: req.user.id }));
+    res.json(courses.listCourses({ includeUnpublished, userId: req.user.id, areaId: req.user.area_id }));
   });
 
   app.get('/api/courses/:id', auth(), (req, res) => {
     const isAdmin = req.user.role === 'admin';
     const course = courses.getCourse(req.params.id, { withAnswers: isAdmin });
-    if (!course || (!isAdmin && course.status !== 'published')) return res.status(404).json({ error: 'Curso no encontrado.' });
+    if (!course || (!isAdmin && (course.status !== 'published' || !courses.isForArea(course.id, req.user.area_id)))) {
+      return res.status(404).json({ error: 'Curso no encontrado.' });
+    }
     res.json({ ...course, progress: learning.progressFor(req.user.id, course.id) });
   });
 
@@ -125,7 +141,10 @@ export function createApp({
     res.json(learning.submitQuiz(req.user.id, req.params.id, answers));
   }));
 
-  app.get('/api/leaderboard', auth(), (req, res) => res.json(learning.leaderboard(20)));
+  app.get('/api/leaderboard', auth(), (req, res) => {
+    const byArea = req.query.scope === 'area' && req.user.area_id;
+    res.json(learning.leaderboard(20, byArea ? req.user.area_id : null));
+  });
 
   // ---------- Videos ----------
   const videoUpload = multer({
@@ -185,7 +204,7 @@ export function createApp({
     if (!sources.length) return res.status(400).json({ error: 'Agrega al menos una fuente.' });
     const lessonCount = Math.min(15, Math.max(2, Number(req.body?.lesson_count) || 6));
     const draft = await ai.generateCourse({ sources, instructions: String(req.body?.instructions ?? ''), lessonCount });
-    const course = courses.createCourse(draft, { userId: req.user.id, generatedByAi: draft.mode === 'ai', sourceIds });
+    const course = courses.createCourse({ ...draft, area_ids: req.body?.area_ids ?? [] }, { userId: req.user.id, generatedByAi: draft.mode === 'ai', sourceIds });
     res.status(201).json({ course, mode: draft.mode, summary: draft.change_summary, truncated: draft.truncated });
   }));
 
@@ -202,6 +221,12 @@ export function createApp({
   // ---------- Administración ----------
   app.get('/api/admin/metrics', auth(), adminOnly, (req, res) => res.json(learning.adminMetrics()));
   app.get('/api/admin/users', auth(), adminOnly, (req, res) => res.json(users.list()));
+  app.post('/api/admin/users/:id/area', auth(), adminOnly, wrap((req, res) => {
+    const areaId = req.body?.area_id ? areas.assertSelectable(String(req.body.area_id)).id : null;
+    users.setArea(req.params.id, areaId);
+    res.json({ ok: true });
+  }));
+
   app.post('/api/admin/users/:id/role', auth(), adminOnly, wrap((req, res) => {
     const role = req.body?.role;
     if (!['admin', 'learner'].includes(role)) return res.status(400).json({ error: 'Rol inválido.' });
@@ -270,5 +295,5 @@ export function createApp({
 }
 
 function publicUser(u) {
-  return { id: u.id, email: u.email, name: u.name, role: u.role };
+  return { id: u.id, email: u.email, name: u.name, role: u.role, area_id: u.area_id ?? null, area_name: u.area_name ?? null, area_icon: u.area_icon ?? null };
 }
