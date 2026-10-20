@@ -27,6 +27,7 @@ export function renderJoin(pinFromUrl) {
   const form = h('form', { class: 'join-card' },
     h('div', { class: 'big-emoji' }, '🎮'),
     h('h1', {}, '¡A jugar!'),
+    h('p', { class: 'join-help' }, 'Ingresa el PIN de 6 números que aparece en la pantalla del facilitador y elige tu apodo.'),
     h('input', { class: 'pin-input', name: 'pin', inputmode: 'numeric', pattern: '\\d{6}', maxlength: 6, placeholder: 'PIN del juego', required: true, value: pinFromUrl ?? '', 'aria-label': 'PIN del juego' }),
     h('input', { class: 'pin-input', name: 'nickname', maxlength: 20, placeholder: 'Tu apodo', required: true, value: session.user?.name.split(' ')[0] ?? '', 'aria-label': 'Tu apodo' }),
     h('button', { class: 'btn btn-primary btn-block btn-lg', type: 'submit' }, 'Entrar'),
@@ -55,13 +56,15 @@ function playerScreen(player) {
     if (s.phase === 'lobby') {
       content = h('div', { class: 'center-msg' }, h('div', { class: 'big-emoji' }, '✅'), h('h2', {}, '¡Estás dentro!'), h('p', {}, '¿Ves tu apodo en la pantalla? Espera a que empiece el juego.'));
     } else if (s.phase === 'question' && !s.me?.answered) {
-      content = h('div', { class: 'player-answers' }, s.question.options.map((opt, k) => h('button', {
+      content = h('div', { class: 'player-question' },
+        h('p', { class: 'player-q' }, h('span', {}, `Pregunta ${s.index + 1} de ${s.total}`), s.question.prompt),
+        h('div', { class: 'player-answers' }, s.question.options.map((opt, k) => h('button', {
         class: `answer answer-${k} big`, 'aria-label': opt,
         onclick: async (e) => {
           root.querySelectorAll('.answer').forEach((b) => { b.disabled = true; if (b !== e.currentTarget) b.classList.add('dim'); });
           try { await api(`/api/games/${player.pin}/answer`, { method: 'POST', body: { playerId: player.playerId, playerKey: player.playerKey, choice: k } }); } catch (err) { toast(err.message, 'error'); }
         },
-      }, h('span', { class: 'shape' }, SHAPES[k]), h('span', { class: 'opt-text' }, opt))));
+      }, h('span', { class: 'shape' }, SHAPES[k]), h('span', { class: 'opt-text' }, opt)))));
     } else if (s.phase === 'question') {
       content = h('div', { class: 'center-msg' }, h('div', { class: 'big-emoji spin' }, '⏳'), h('h2', {}, '¡Respuesta enviada!'), h('p', {}, '¿Habrás acertado?'));
     } else if (s.phase === 'reveal' || s.phase === 'leaderboard') {
@@ -71,7 +74,8 @@ function playerScreen(player) {
         h('h2', {}, ok ? '¡Correcto!' : ok === false ? 'Incorrecto' : 'Se acabó el tiempo'),
         ok && h('p', { class: 'gain' }, `+${s.me.last_gain}`),
         s.me?.streak > 1 && h('p', {}, `🔥 Racha de ${s.me.streak}`),
-        h('p', {}, `Vas en el puesto #${s.me?.rank ?? '-'}`));
+        h('p', {}, `Vas en el puesto #${s.me?.rank ?? '-'}`),
+        !ok && s.question && h('p', { class: 'small' }, `Respuesta correcta: ${SHAPES[s.question.correct_index]} ${s.question.options[s.question.correct_index]}`));
     } else if (s.phase === 'finished') {
       if (lastPhase !== 'finished' && s.me?.rank <= 3) confetti();
       content = h('div', { class: 'center-msg' },

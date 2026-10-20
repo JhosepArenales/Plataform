@@ -608,8 +608,32 @@ const games = createLiveGames({
     }
     persist();
   },
-  onChange: (g) => { botsReact(g); remoteHost.publish(g); },
+  onChange: (g) => { botsReact(g); remoteHost.publish(g); autoHost(g); },
 });
+
+// Partida de práctica: sin facilitador, avanza sola (para probar la vista del participante).
+const practice = { pin: null, timers: new Set() };
+function autoHost(g) {
+  if (g.pin !== practice.pin) return;
+  const key = `${g.phase}:${g.index}`;
+  if (practice.timers.has(key)) return;
+  const later = (ms, action) => { practice.timers.add(key); setTimeout(() => { try { action(); } catch { /* la partida cambió */ } }, ms); };
+  const human = [...g.players.values()].some((p) => !p.bot);
+  if (g.phase === 'lobby' && human) later(3500, () => games.start(g.pin, g.hostKey));
+  else if (g.phase === 'reveal') later(4500, () => games.next(g.pin, g.hostKey));
+  else if (g.phase === 'leaderboard') later(3000, () => games.next(g.pin, g.hostKey));
+}
+function startPracticeGame() {
+  const g0 = practice.pin && games.raw(practice.pin);
+  if (g0 && g0.phase === 'lobby') return { pin: practice.pin };
+  const course = store.courses.find((c) => c.status === 'published' && c.lessons.some((l) => l.type === 'quiz' && l.questions.length >= 3)) ?? store.courses.find((c) => c.lessons.some((l) => l.type === 'quiz'));
+  const questions = course.lessons.filter((l) => l.type === 'quiz').flatMap((l) => l.questions).slice(0, 5);
+  const { pin } = games.create({ title: `Práctica: ${course.title}`, questions });
+  practice.pin = pin;
+  practice.timers = new Set();
+  addBots(pin);
+  return { pin };
+}
 
 // Participantes simulados: se unen solos y responden con distinta rapidez y acierto.
 const BOT_NAMES = ['Sofía', 'Mateo', 'Valentina', 'Joaquín', 'Camila'];
@@ -1046,6 +1070,8 @@ const demo = {
     if (resetArea) { const u = users.byEmail(email); if (u) u.area_id = null; persist(); }
     return users.login({ email });
   },
+  startPracticeGame,
+  isPractice: (pin) => pin === practice.pin,
   roomAvailable: async () => !!(await roomPromise),
   aiAvailable: async () => !!(await samplePromise),
 };

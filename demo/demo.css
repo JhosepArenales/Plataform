@@ -46,3 +46,5 @@
   .demo-label { display: none; }
   .demo-btn { padding: .3rem .6rem; }
 }
+.demo-note { background: rgba(255,255,255,.14); border: 1px solid rgba(255,255,255,.25); border-radius: var(--radius); padding: .7rem .9rem; font-size: .88rem; line-height: 1.4; text-align: left; }
+.linklike { background: none; border: 0; padding: 0; font: inherit; font-weight: 800; color: #9fe8f2; text-decoration: underline; cursor: pointer; }

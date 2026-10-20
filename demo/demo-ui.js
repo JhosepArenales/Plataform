@@ -94,6 +94,21 @@ function renderHost(pin) {
   return h('div', { class: 'demo-host' }, screen, phone);
 }
 
+// Pantalla del participante con la explicación de la partida de práctica.
+function renderJoin(pin) {
+  const view = renderJoinBase(pin);
+  const card = view.querySelector('.join-card');
+  if (!card) return view;
+  const note = demo.isPractice(pin)
+    ? h('div', { class: 'demo-note' }, h('strong', {}, 'Así lo ve cada participante en su celular. '),
+      'Creamos una partida de práctica: el PIN ya está escrito. Pulsa Entrar y juega contra 5 compañeros simulados; la partida avanza sola.')
+    : h('div', { class: 'demo-note' }, h('strong', {}, '¿No tienes un PIN? '),
+      h('button', { class: 'linklike', type: 'button', onclick: () => { location.hash = `#/jugar/${demo.startPracticeGame().pin}`; } }, 'Crea una partida de práctica'),
+      ' o, desde Administración, lanza un "Juego en vivo" de cualquier curso.');
+  card.prepend(note);
+  return view;
+}
+
 // Barra superior de la demostración: cambiar de perfil y reiniciar.
 function mountDemoBar() {
   const asRole = async (email, target, opts) => {
@@ -107,7 +122,10 @@ function mountDemoBar() {
     h('span', { class: 'demo-label' }, 'Ver como:'),
     h('button', { class: 'demo-btn', onclick: () => asRole('andrea.torres@plataform.com', '#/area', { resetArea: true }) }, '🧑‍🎓 Persona nueva'),
     h('button', { class: 'demo-btn', onclick: () => asRole('ana.gomez@plataform.com', '#/admin') }, '🛠️ Administradora'),
-    h('button', { class: 'demo-btn', onclick: () => { location.hash = '#/jugar'; } }, '📱 Jugador'),
+    h('button', { class: 'demo-btn', onclick: () => {
+      try { sessionStorage.removeItem('academia.player'); } catch { /* sin almacenamiento */ }
+      location.hash = `#/jugar/${demo.startPracticeGame().pin}`;
+    } }, '📱 Participante'),
     h('button', { class: 'demo-btn ghost', onclick: async () => {
       if (!await confirmAction('Reiniciar demostración', 'Se borran los cambios que hiciste y vuelven los cursos y personas de ejemplo.', 'Reiniciar', true)) return;
       demo.reset(); session.token = null; session.user = null;

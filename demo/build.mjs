@@ -32,7 +32,7 @@ const scripts = [
   ['public/js/ui.js', { 'function videoEmbed(': 'function videoEmbedReal(' }],
   ['public/js/api.js', { 'function uploadWithProgress(': 'function uploadWithProgressReal(' }],
   ['public/js/views/learner.js', {}],
-  ['public/js/views/game.js', { 'function renderHost(': 'function renderHostBase(' }],
+  ['public/js/views/game.js', { 'function renderHost(': 'function renderHostBase(', 'function renderJoin(': 'function renderJoinBase(' }],
   ['public/js/views/admin.js', {}],
   ['demo/demo-ui.js', {}],
   ['public/js/app.js', {}],
