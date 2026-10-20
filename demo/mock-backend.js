@@ -484,10 +484,10 @@ function createLiveGames({ onFinished, onChange }) {
   const get = (pin) => { const g = games.get(String(pin)); if (!g) throw httpError(404, 'No existe una partida con ese PIN.'); return g; };
   const assertHost = (g, key) => { if (key !== g.hostKey) throw httpError(403, 'Solo quien creó la partida puede controlarla.'); };
 
-  function create({ title, questions }) {
+  function create({ title, questions, hostUserId = null, hostName = '', areaIds = [], simulatedHost = false }) {
     if (!questions?.length) throw httpError(400, 'Elige un curso con al menos un quiz.');
     const pin = randomPin();
-    games.set(pin, { pin, title, hostKey: hex(16), questions, phase: 'lobby', index: -1, startedAt: 0, timer: null, players: new Map(), answers: new Map(), subs: new Set() });
+    games.set(pin, { pin, title, hostUserId, hostName, areaIds, simulatedHost, hostLeftAt: Date.now(), createdAt: Date.now(), hostKey: hex(16), questions, phase: 'lobby', index: -1, startedAt: 0, timer: null, players: new Map(), answers: new Map(), subs: new Set() });
     return { pin, hostKey: games.get(pin).hostKey };
   }
   function join(pin, { nickname, userId = null, bot = false, remotePeer = null }) {
@@ -594,9 +594,23 @@ function createLiveGames({ onFinished, onChange }) {
     const sub = { role, playerId, send };
     g.subs.add(sub);
     send(viewFor(g, sub));
-    return () => g.subs.delete(sub);
+    return () => { g.subs.delete(sub); if (role === 'host' && !hostConnected(g)) g.hostLeftAt = Date.now(); };
   }
-  return { create, join, start, answer, next, end, subscribe, remoteState, has: (pin) => games.has(String(pin)), raw: (pin) => games.get(String(pin)) };
+  const hostConnected = (g) => g.simulatedHost || [...g.subs].some((s) => s.role === 'host');
+  function listOpen({ areaId = null, seeAll = false, userId = null }) {
+    return [...games.values()]
+      .filter((g) => g.phase !== 'finished' && (hostConnected(g) || Date.now() - g.hostLeftAt < 60000))
+      .filter((g) => seeAll || !g.areaIds.length || g.areaIds.includes(areaId))
+      .sort((a, b) => b.createdAt - a.createdAt)
+      .map((g) => ({ pin: g.pin, title: g.title, host_name: g.hostName, phase: g.phase, index: g.index, total: g.questions.length, player_count: g.players.size, created_at: new Date(g.createdAt).toISOString(), mine: !!userId && g.hostUserId === userId }));
+  }
+  function resume(pin, { userId, isAdmin }) {
+    const g = get(pin);
+    if (g.simulatedHost || (g.hostUserId !== userId && !isAdmin)) throw httpError(403, 'Solo quien creó la partida puede abrir su pantalla.');
+    if (g.phase === 'finished') throw httpError(409, 'Esta partida ya terminó.');
+    return { pin: g.pin, hostKey: g.hostKey };
+  }
+  return { create, join, start, answer, next, end, subscribe, listOpen, resume, remoteState, has: (pin) => games.has(String(pin)), raw: (pin) => games.get(String(pin)) };
 }
 
 const games = createLiveGames({
@@ -611,36 +625,44 @@ const games = createLiveGames({
   onChange: (g) => { botsReact(g); remoteHost.publish(g); autoHost(g); },
 });
 
-// Partida de práctica: sin facilitador, avanza sola (para probar la vista del participante).
-const practice = { pin: null, timers: new Set() };
+// Partidas abiertas simuladas: "facilitadas" por compañeros de ejemplo, avanzan solas
+// y empiezan cuando una persona real se une. Así la lista de partidas nunca está vacía en la demo.
+const simulated = { timers: new Set() };
 function autoHost(g) {
-  if (g.pin !== practice.pin) return;
-  const key = `${g.phase}:${g.index}`;
-  if (practice.timers.has(key)) return;
-  const later = (ms, action) => { practice.timers.add(key); setTimeout(() => { try { action(); } catch { /* la partida cambió */ } }, ms); };
+  if (!g.simulatedHost) return;
+  const key = `${g.pin}:${g.phase}:${g.index}`;
+  if (simulated.timers.has(key)) return;
+  const later = (ms, action) => { simulated.timers.add(key); setTimeout(() => { try { action(); } catch { /* la partida cambió */ } }, ms); };
   const human = [...g.players.values()].some((p) => !p.bot);
-  if (g.phase === 'lobby' && human) later(3500, () => games.start(g.pin, g.hostKey));
+  if (g.phase === 'lobby' && human) later(5000, () => games.start(g.pin, g.hostKey));
   else if (g.phase === 'reveal') later(4500, () => games.next(g.pin, g.hostKey));
   else if (g.phase === 'leaderboard') later(3000, () => games.next(g.pin, g.hostKey));
 }
-function startPracticeGame() {
-  const g0 = practice.pin && games.raw(practice.pin);
-  if (g0 && g0.phase === 'lobby') return { pin: practice.pin };
-  const course = store.courses.find((c) => c.status === 'published' && c.lessons.some((l) => l.type === 'quiz' && l.questions.length >= 3)) ?? store.courses.find((c) => c.lessons.some((l) => l.type === 'quiz'));
-  const questions = course.lessons.filter((l) => l.type === 'quiz').flatMap((l) => l.questions).slice(0, 5);
-  const { pin } = games.create({ title: `Práctica: ${course.title}`, questions });
-  practice.pin = pin;
-  practice.timers = new Set();
-  addBots(pin);
-  return { pin };
+const SIMULATED_GAMES = [
+  { course: 'Bienvenida a Plataform', host: 'Sofía Ríos' },
+  { course: 'Técnicas de negociación', host: 'Mateo López' },
+  { course: 'Seguridad de la información', host: 'Diego Mora' },
+];
+function ensureSimulatedGames() {
+  for (const spec of SIMULATED_GAMES) {
+    const open = [...gamesOpenPins()].some((pin) => games.raw(pin)?.simulatedFrom === spec.course);
+    if (open) continue;
+    const course = store.courses.find((c) => c.title === spec.course && c.status === 'published');
+    const questions = course?.lessons.filter((l) => l.type === 'quiz').flatMap((l) => l.questions);
+    if (!questions?.length) continue;
+    const { pin } = games.create({ title: course.title, questions, hostName: spec.host, areaIds: course.area_ids ?? [], simulatedHost: true });
+    games.raw(pin).simulatedFrom = spec.course;
+    addBots(pin, 3);
+  }
 }
+function* gamesOpenPins() { for (const g of games.listOpen({ seeAll: true })) yield g.pin; }
 
 // Participantes simulados: se unen solos y responden con distinta rapidez y acierto.
 const BOT_NAMES = ['Sofía', 'Mateo', 'Valentina', 'Joaquín', 'Camila'];
 const BOT_SKILL = [0.85, 0.7, 0.6, 0.75, 0.5];
 const botTimers = new Map();
-function addBots(pin) {
-  BOT_NAMES.forEach((name, i) => setTimeout(() => {
+function addBots(pin, count = BOT_NAMES.length) {
+  BOT_NAMES.slice(0, count).forEach((name, i) => setTimeout(() => {
     const g = games.raw(pin);
     if (!g || g.phase !== 'lobby') return;
     try { games.join(pin, { nickname: name, bot: true }); } catch { /* apodo tomado */ }
@@ -960,11 +982,17 @@ function route(method, path, body, token) {
     const c = findCourse(String(body?.course_id ?? ''));
     if (!c) throw httpError(404, 'Curso no encontrado.');
     const questions = c.lessons.filter((l) => l.type === 'quiz').flatMap((l) => l.questions);
-    const created = games.create({ title: c.title, questions });
+    const created = games.create({ title: c.title, questions, hostUserId: user.id, hostName: user.name, areaIds: c.area_ids ?? [] });
     addBots(created.pin);
     remoteHost.attach(created.pin);
     return { ...created, question_count: questions.length };
   }
+  if (method === 'GET' && pathname === '/api/games') {
+    need();
+    ensureSimulatedGames();
+    return games.listOpen({ areaId: user.area_id, seeAll: user.role === 'admin', userId: user.id });
+  }
+  if (method === 'POST' && (r = m(/^\/api\/games\/(\d{6})\/resume$/))) { need(); return games.resume(r[1], { userId: user.id, isAdmin: user.role === 'admin' }); }
   if ((r = m(/^\/api\/games\/(\d{6})\/(join|start|next|end|answer)$/)) && method === 'POST') {
     const [, pin, action] = r;
     if (action === 'join') {
@@ -1070,8 +1098,6 @@ const demo = {
     if (resetArea) { const u = users.byEmail(email); if (u) u.area_id = null; persist(); }
     return users.login({ email });
   },
-  startPracticeGame,
-  isPractice: (pin) => pin === practice.pin,
   roomAvailable: async () => !!(await roomPromise),
   aiAvailable: async () => !!(await samplePromise),
 };

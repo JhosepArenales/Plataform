@@ -97,3 +97,57 @@ test('juego vía HTTP con SSE y XP para jugadores con sesión', async () => {
     assert.equal((await srv.call('/api/games/000000/join', { method: 'POST', body: { nickname: 'x' } })).status, 404);
   } finally { await srv.stop(); }
 });
+
+test('lista de partidas abiertas: solo con facilitador presente, por área y sin terminadas', async () => {
+  let t = 0;
+  const games = createLiveGames({ clock: () => t });
+  const a = games.create({ hostUserId: 'h1', hostName: 'Ana', title: 'General', questions: QUESTIONS });
+  const b = games.create({ hostUserId: 'h2', hostName: 'Beto', title: 'Solo Comercial', questions: QUESTIONS, areaIds: ['com'] });
+  const unsubA = games.subscribe(a.pin, { role: 'host', hostKey: a.hostKey }, () => {});
+  games.subscribe(b.pin, { role: 'host', hostKey: b.hostKey }, () => {});
+  const titles = (opts) => games.listOpen(opts).map((g) => g.title).sort();
+  assert.deepEqual(titles({ areaId: 'tec' }), ['General']);
+  assert.deepEqual(titles({ areaId: 'com' }), ['General', 'Solo Comercial']);
+  assert.deepEqual(titles({ seeAll: true }), ['General', 'Solo Comercial']);
+  assert.equal(games.listOpen({ userId: 'h1' }).find((g) => g.title === 'General').mine, true);
+  assert.equal(games.listOpen({}).find((g) => g.title === 'General').host_name, 'Ana');
+
+  // El facilitador cierra su pantalla: sigue listada durante el margen y luego desaparece.
+  unsubA(); t += 30_000;
+  assert.deepEqual(titles({ areaId: 'tec' }), ['General']);
+  t += 40_000;
+  assert.deepEqual(titles({ areaId: 'tec' }), []);
+
+  // Recuperar el control: solo quien la creó (o administración).
+  assert.throws(() => games.resume(a.pin, { userId: 'otro', isAdmin: false }), /Solo quien/);
+  assert.equal(games.resume(a.pin, { userId: 'h1', isAdmin: false }).hostKey, a.hostKey);
+
+  // Terminada: no se lista.
+  games.join(b.pin, { nickname: 'P' });
+  games.end(b.pin, b.hostKey);
+  assert.deepEqual(titles({ seeAll: true }), []);
+});
+
+test('GET /api/games respeta el área de quien consulta', async () => {
+  const srv = await startServer();
+  try {
+    const admin = await srv.login('host@e.com', 'Hilda Host');
+    const ventas = await srv.login('v@e.com', 'Vale');
+    const areas = (await srv.call('/api/areas', { token: admin.token })).data;
+    const com = areas.find((a) => a.name === 'Comercial').id;
+    const tec = areas.find((a) => a.name === 'Tecnología').id;
+    await srv.call('/api/me/area', { token: ventas.token, method: 'POST', body: { area_id: tec } });
+    const course = (await srv.call('/api/courses', { token: admin.token, method: 'POST', body: { ...sampleCourse(), area_ids: [com] } })).data;
+    const g = (await srv.call('/api/games', { token: admin.token, method: 'POST', body: { course_id: course.id } })).data;
+    // Recién creada (facilitador abriendo su pantalla): visible para administración, no para Tecnología.
+    assert.equal((await srv.call('/api/games', { token: admin.token })).data[0].host_name, 'Hilda Host');
+    assert.equal((await srv.call('/api/games', { token: ventas.token })).data.length, 0);
+    await srv.call('/api/me/area', { token: ventas.token, method: 'POST', body: { area_id: com } });
+    const list = (await srv.call('/api/games', { token: ventas.token })).data;
+    assert.equal(list.length, 1);
+    assert.equal(list[0].pin, g.pin);
+    assert.equal((await srv.call(`/api/games/${g.pin}/resume`, { token: ventas.token, method: 'POST' })).status, 403);
+    assert.equal((await srv.call(`/api/games/${g.pin}/resume`, { token: admin.token, method: 'POST' })).data.hostKey, g.hostKey);
+    assert.equal((await srv.call('/api/games')).status, 401);
+  } finally { await srv.stop(); }
+});

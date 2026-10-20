@@ -25,24 +25,67 @@ export function renderJoin(pinFromUrl) {
   if (saved && (!pinFromUrl || saved.pin === pinFromUrl)) return playerScreen(saved);
 
   const form = h('form', { class: 'join-card' },
-    h('div', { class: 'big-emoji' }, '🎮'),
-    h('h1', {}, '¡A jugar!'),
-    h('p', { class: 'join-help' }, 'Ingresa el PIN de 6 números que aparece en la pantalla del facilitador y elige tu apodo.'),
+    session.user && h('h2', { class: 'join-sub' }, '¿Tienes un PIN?'),
     h('input', { class: 'pin-input', name: 'pin', inputmode: 'numeric', pattern: '\\d{6}', maxlength: 6, placeholder: 'PIN del juego', required: true, value: pinFromUrl ?? '', 'aria-label': 'PIN del juego' }),
     h('input', { class: 'pin-input', name: 'nickname', maxlength: 20, placeholder: 'Tu apodo', required: true, value: session.user?.name.split(' ')[0] ?? '', 'aria-label': 'Tu apodo' }),
     h('button', { class: 'btn btn-primary btn-block btn-lg', type: 'submit' }, 'Entrar'),
     h('a', { href: '#/', class: 'link-center light' }, '← Volver a la Academia'));
+  const view = h('div', { class: 'game-bg' });
+  const header = h('div', { class: 'join-head' },
+    h('div', { class: 'big-emoji' }, '🎮'),
+    h('h1', {}, '¡A jugar!'),
+    h('p', { class: 'join-help' }, session.user
+      ? 'Únete a una de las partidas abiertas o escribe el PIN de 6 números que aparece en la pantalla del facilitador.'
+      : 'Escribe el PIN de 6 números que aparece en la pantalla del facilitador y elige tu apodo.'));
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
     const { pin, nickname } = Object.fromEntries(new FormData(form));
     try {
-      const r = await busy(form.querySelector('button'), () => api(`/api/games/${pin}/join`, { method: 'POST', body: { nickname } }), 'Entrando…');
+      const r = await busy(form.querySelector('button[type=submit]'), () => api(`/api/games/${pin}/join`, { method: 'POST', body: { nickname } }), 'Entrando…');
       const player = { pin, ...r, nickname };
-      sessionStorage.setItem(PLAYER_KEY, JSON.stringify(player));
-      form.parentElement.replaceWith(playerScreen(player));
+      try { sessionStorage.setItem(PLAYER_KEY, JSON.stringify(player)); } catch { /* sin almacenamiento */ }
+      view.replaceWith(playerScreen(player));
     } catch (err) { toast(err.message, 'error'); }
   });
-  return h('div', { class: 'game-bg' }, form);
+  const joinGame = (pin) => {
+    form.elements.pin.value = pin;
+    if (form.elements.nickname.value.trim()) form.requestSubmit();
+    else { form.elements.nickname.focus(); toast('Escribe tu apodo y pulsa Entrar', 'info'); }
+  };
+  view.append(h('div', { class: 'join-col' }, header, session.user ? openGamesList(joinGame) : null, form));
+  return view;
+}
+
+// Partidas abiertas: se actualiza sola mientras la pantalla está visible.
+function openGamesList(onJoin) {
+  const list = h('div', { class: 'open-games', 'aria-live': 'polite' });
+  const section = h('section', { class: 'open-games-wrap' }, h('h2', {}, 'Partidas abiertas'), list);
+  const status = (g) => (g.phase === 'lobby' ? 'Esperando para empezar' : `En curso · pregunta ${Math.max(1, g.index + 1)} de ${g.total}`);
+  const paint = (games) => list.replaceChildren(...(games.length ? games.map((g) => h('div', { class: 'open-game' },
+    h('div', { class: 'grow' },
+      h('strong', {}, g.title),
+      h('span', { class: 'small' }, `${g.host_name ? `Facilita ${g.host_name} · ` : ''}${g.player_count} ${g.player_count === 1 ? 'persona' : 'personas'}`),
+      h('span', { class: `og-status ${g.phase === 'lobby' ? 'wait' : 'live'}` }, status(g))),
+    g.mine
+      ? h('button', { class: 'btn btn-light btn-sm', onclick: async (e) => {
+        try {
+          const r = await busy(e.currentTarget, () => api(`/api/games/${g.pin}/resume`, { method: 'POST' }));
+          rememberHost(r.pin, r.hostKey);
+          location.hash = `#/host/${r.pin}`;
+        } catch (err) { toast(err.message, 'error'); }
+      } }, 'Abrir mi pantalla')
+      : h('button', { class: 'btn btn-light btn-sm', onclick: () => onJoin(g.pin) }, 'Unirme')))
+    : [h('p', { class: 'small og-empty' }, 'No hay partidas abiertas ahora. Cuando alguien inicie una, aparecerá aquí.')]));
+  let timer = null;
+  const refresh = async () => {
+    if (!section.isConnected && timer) { clearInterval(timer); return; }
+    try { paint(await api('/api/games')); } catch { /* se reintenta en el siguiente ciclo */ }
+  };
+  list.append(h('p', { class: 'small og-empty' }, 'Buscando partidas…'));
+  refresh();
+  timer = setInterval(refresh, 3000);
+  window.addEventListener('hashchange', () => clearInterval(timer), { once: true });
+  return section;
 }
 
 function playerScreen(player) {
@@ -78,6 +121,8 @@ function playerScreen(player) {
         !ok && s.question && h('p', { class: 'small' }, `Respuesta correcta: ${SHAPES[s.question.correct_index]} ${s.question.options[s.question.correct_index]}`));
     } else if (s.phase === 'finished') {
       if (lastPhase !== 'finished' && s.me?.rank <= 3) confetti();
+      // La partida terminó: volver a "Jugar" debe mostrar la lista, no esta pantalla.
+      try { sessionStorage.removeItem(PLAYER_KEY); } catch { /* sin almacenamiento */ }
       content = h('div', { class: 'center-msg' },
         h('div', { class: 'big-emoji' }, ['🥇', '🥈', '🥉'][s.me?.rank - 1] ?? '🏁'),
         h('h2', {}, `Terminaste en el puesto #${s.me?.rank}`), h('p', {}, `${s.me?.score} puntos`),

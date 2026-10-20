@@ -94,18 +94,12 @@ function renderHost(pin) {
   return h('div', { class: 'demo-host' }, screen, phone);
 }
 
-// Pantalla del participante con la explicación de la partida de práctica.
+// Pantalla del participante con una explicación de la demostración.
 function renderJoin(pin) {
   const view = renderJoinBase(pin);
-  const card = view.querySelector('.join-card');
-  if (!card) return view;
-  const note = demo.isPractice(pin)
-    ? h('div', { class: 'demo-note' }, h('strong', {}, 'Así lo ve cada participante en su celular. '),
-      'Creamos una partida de práctica: el PIN ya está escrito. Pulsa Entrar y juega contra 5 compañeros simulados; la partida avanza sola.')
-    : h('div', { class: 'demo-note' }, h('strong', {}, '¿No tienes un PIN? '),
-      h('button', { class: 'linklike', type: 'button', onclick: () => { location.hash = `#/jugar/${demo.startPracticeGame().pin}`; } }, 'Crea una partida de práctica'),
-      ' o, desde Administración, lanza un "Juego en vivo" de cualquier curso.');
-  card.prepend(note);
+  view.querySelector('.join-col')?.prepend(h('div', { class: 'demo-note' },
+    h('strong', {}, 'Así lo ve cada participante en su celular. '),
+    'Ves las partidas abiertas de tu área. En esta demo las facilitan compañeros simulados y empiezan unos segundos después de que te unes.'));
   return view;
 }
 
@@ -124,7 +118,7 @@ function mountDemoBar() {
     h('button', { class: 'demo-btn', onclick: () => asRole('ana.gomez@plataform.com', '#/admin') }, '🛠️ Administradora'),
     h('button', { class: 'demo-btn', onclick: () => {
       try { sessionStorage.removeItem('academia.player'); } catch { /* sin almacenamiento */ }
-      location.hash = `#/jugar/${demo.startPracticeGame().pin}`;
+      asRole('luis.perez@plataform.com', '#/jugar');
     } }, '📱 Participante'),
     h('button', { class: 'demo-btn ghost', onclick: async () => {
       if (!await confirmAction('Reiniciar demostración', 'Se borran los cambios que hiciste y vuelven los cursos y personas de ejemplo.', 'Reiniciar', true)) return;

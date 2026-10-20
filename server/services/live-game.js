@@ -5,6 +5,9 @@ import { randomBytes, randomInt } from 'node:crypto';
 
 const GAME_TTL_MS = 3 * 60 * 60 * 1000;
 const MAX_PLAYERS = 300;
+// Si la pantalla del facilitador se cierra, la partida deja de listarse tras este margen
+// (cubre una recarga o un corte breve de red).
+const HOST_GRACE_MS = 60 * 1000;
 
 export function createLiveGames({ onFinished = () => {}, clock = () => Date.now() } = {}) {
   const games = new Map();
@@ -15,11 +18,11 @@ export function createLiveGames({ onFinished = () => {}, clock = () => Date.now(
     return pin;
   }
 
-  function create({ hostUserId, title, questions }) {
+  function create({ hostUserId, hostName = '', title, questions, areaIds = [] }) {
     if (!questions?.length) throw Object.assign(new Error('Elige un quiz con al menos una pregunta.'), { status: 400 });
     const pin = newPin();
     const game = {
-      pin, title, hostUserId, hostKey: randomBytes(16).toString('hex'),
+      pin, title, hostUserId, hostName, areaIds, hostKey: randomBytes(16).toString('hex'), hostLeftAt: clock(),
       questions, phase: 'lobby', index: -1, questionStartedAt: 0, timer: null,
       players: new Map(), answers: new Map(), subscribers: new Set(), createdAt: clock(),
     };
@@ -190,7 +193,33 @@ export function createLiveGames({ onFinished = () => {}, clock = () => Date.now(
     const sub = { role, playerId, send };
     g.subscribers.add(sub);
     send(viewFor(g, sub));
-    return () => g.subscribers.delete(sub);
+    return () => {
+      g.subscribers.delete(sub);
+      if (role === 'host' && !hostConnected(g)) g.hostLeftAt = clock();
+    };
+  }
+
+  const hostConnected = (g) => [...g.subscribers].some((s) => s.role === 'host');
+
+  // Partidas a las que todavía se puede entrar: no terminadas y con el facilitador presente.
+  // Una partida de un curso por áreas solo se lista a esas áreas (la administración ve todas).
+  function listOpen({ areaId = null, seeAll = false, userId = null } = {}) {
+    return [...games.values()]
+      .filter((g) => g.phase !== 'finished' && (hostConnected(g) || clock() - g.hostLeftAt < HOST_GRACE_MS))
+      .filter((g) => seeAll || !g.areaIds.length || g.areaIds.includes(areaId))
+      .sort((a, b) => b.createdAt - a.createdAt)
+      .map((g) => ({
+        pin: g.pin, title: g.title, host_name: g.hostName, phase: g.phase, index: g.index, total: g.questions.length,
+        player_count: g.players.size, created_at: new Date(g.createdAt).toISOString(), mine: !!userId && g.hostUserId === userId,
+      }));
+  }
+
+  // Quien creó la partida puede recuperar el control desde otra pestaña o tras cerrar la pantalla.
+  function resume(pin, { userId, isAdmin }) {
+    const g = get(pin);
+    if (g.hostUserId !== userId && !isAdmin) throw Object.assign(new Error('Solo quien creó la partida puede abrir su pantalla.'), { status: 403 });
+    if (g.phase === 'finished') throw Object.assign(new Error('Esta partida ya terminó.'), { status: 409 });
+    return { pin: g.pin, hostKey: g.hostKey };
   }
 
   function sweep() {
@@ -199,5 +228,5 @@ export function createLiveGames({ onFinished = () => {}, clock = () => Date.now(
     }
   }
 
-  return { create, join, start, answer, next, end, subscribe, sweep, scoreFor, _games: games };
+  return { create, join, start, answer, next, end, subscribe, listOpen, resume, sweep, scoreFor, _games: games };
 }

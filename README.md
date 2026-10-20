@@ -11,7 +11,7 @@ Espacio de capacitación para personas nuevas: videos, cursos interactivos, quiz
 | Lecciones de video (subido, YouTube, Vimeo, Drive), lectura y quiz | Editor de cursos: lecciones, videos, preguntas, orden, vista previa |
 | Progreso por curso, XP, niveles, insignias y ranking | **Actualizar con IA**: sube el material nuevo y la IA propone qué cambiar |
 | Quiz con explicación por pregunta (aprueba con 70 %) | Historial de versiones con nota de cambio y restauración |
-| Juego en vivo desde el celular con PIN, sin necesidad de cuenta | Juego en vivo proyectable: lobby, temporizador, respuestas, ranking y podio |
+| Juego en vivo desde el celular: lista de partidas abiertas de su área, o PIN sin necesidad de cuenta | Juego en vivo proyectable: lobby, temporizador, respuestas, ranking y podio |
 | | Panel con indicadores por curso y alertas de cursos con baja nota o finalización |
 | | Gestión de personas, roles y áreas (lista controlada; cada curso define a qué áreas va dirigido) |
 | | Avance promedio por área en el panel |

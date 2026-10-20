@@ -241,8 +241,16 @@ export function createApp({
     if (!course) return res.status(404).json({ error: 'Curso no encontrado.' });
     const quizLessons = course.lessons.filter((l) => l.type === 'quiz' && (!req.body.lesson_id || l.id === req.body.lesson_id));
     const questions = quizLessons.flatMap((l) => l.questions);
-    const created = games.create({ hostUserId: req.user.id, title: course.title, questions });
+    const created = games.create({ hostUserId: req.user.id, hostName: req.user.name, title: course.title, questions, areaIds: course.area_ids });
     res.status(201).json({ ...created, question_count: questions.length });
+  }));
+
+  app.get('/api/games', auth(), (req, res) => {
+    res.json(games.listOpen({ areaId: req.user.area_id, seeAll: req.user.role === 'admin', userId: req.user.id }));
+  });
+
+  app.post('/api/games/:pin/resume', auth(), wrap((req, res) => {
+    res.json(games.resume(req.params.pin, { userId: req.user.id, isAdmin: req.user.role === 'admin' }));
   }));
 
   app.post('/api/games/:pin/join', auth(false), wrap((req, res) => {
