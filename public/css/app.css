@@ -219,7 +219,7 @@ button.answer:active { transform: scale(.97); }
 .host-head { display: flex; justify-content: space-between; align-items: center; font-weight: 800; font-size: 1.1rem; }
 .lobby { margin: auto; text-align: center; display: flex; flex-direction: column; align-items: center; gap: 1rem; width: 100%; max-width: 1000px; }
 .pin-big { font-size: clamp(3rem, 12vw, 7rem); font-weight: 800; letter-spacing: .08em; background: #fff; color: var(--brand); padding: .1em .5em; border-radius: 16px; line-height: 1.1; }
-.player-cloud { display: flex; flex-wrap: wrap; gap: .5rem; justify-content: center; min-height: 60px; }
+.player-cloud { display: flex; flex-wrap: wrap; gap: .5rem; justify-content: center; align-items: flex-start; align-content: flex-start; min-height: 60px; }
 .player-cloud .pop { background: rgba(255,255,255,.18); padding: .4rem 1rem; border-radius: 999px; font-weight: 700; animation: pop 300ms ease; }
 .host-question { flex: 1; display: flex; flex-direction: column; gap: 1rem; max-width: 1200px; width: 100%; margin: 0 auto; padding-top: 1rem; }
 .host-question h1 { text-align: center; background: #fff; color: var(--text); padding: 1rem 1.5rem; border-radius: var(--radius); font-size: clamp(1.3rem, 3vw, 2.2rem); }
