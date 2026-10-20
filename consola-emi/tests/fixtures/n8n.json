@@ -1,0 +1,14 @@
+{
+  "client_lookup_ok": { "estado": "inversionista", "nombre": "Carlos", "ref_masked": "CC ***378202", "hubspot_id": "123" },
+  "client_lookup_not_found": { "estado": "no_encontrado" },
+  "operation_lookup_ok": {
+    "found": true, "numero_operacion": "6543", "estado_cobro": "prejuridico",
+    "empresa": { "razon_social": "Logística Ficticia del Caribe SAS", "nit": "900333444", "tipo_societario": "SAS" },
+    "ultima_comunicacion": { "fecha": "2026-10-08", "asunto": "Actualización | Acuerdo de pago en revisión", "resumen": "La pagadora presentó una propuesta de acuerdo de pago." },
+    "expediente": null
+  },
+  "operation_lookup_not_found": { "found": false },
+  "escalate_created": { "ticket_id": "987654", "status": "created" },
+  "escalate_existing": { "ticket_id": "987654", "status": "existing" },
+  "upstream_error": { "error": "upstream_unavailable" }
+}

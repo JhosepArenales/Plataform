@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Consola de Emi</title>
+  <meta name="description" content="Consola para probar y administrar a Emi, la asistente virtual de Mesfix.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Plus+Jakarta+Sans:wght@600;700&family=Public+Sans:wght@400;500;600&display=swap">
+  <link rel="stylesheet" href="css/styles.css">
+  <script>
+    // Tema antes de pintar, para evitar parpadeo. Es una preferencia del usuario: puede vivir en localStorage.
+    try { var t = localStorage.getItem('emi_theme'); if (t === 'light' || t === 'dark') document.documentElement.setAttribute('data-theme', t); } catch (e) {}
+  </script>
+</head>
+<body>
+  <div class="app">
+    <aside class="sidebar" aria-label="Navegación">
+      <div class="brand">
+        <span class="brand-mark" aria-hidden="true">E</span>
+        <div><b>Consola de Emi</b><small>Mesfix · Plataform</small></div>
+      </div>
+      <nav id="nav"></nav>
+    </aside>
+    <main>
+      <header class="topbar">
+        <div>
+          <h1 id="view-title">Playground</h1>
+          <div class="sub" id="view-sub"></div>
+        </div>
+        <div class="topbar-actions" id="topbar-actions"></div>
+      </header>
+      <div id="banner"></div>
+      <section id="view" aria-live="polite"><div class="empty">Cargando consola…</div></section>
+    </main>
+  </div>
+  <div id="modal-root"></div>
+  <div id="toast" role="status"></div>
+
+  <script src="js/engine/menus.js"></script>
+  <script src="js/engine/engine.js"></script>
+  <script src="js/engine/holidays.js"></script>
+  <script src="js/engine/mock.js"></script>
+  <script src="js/data/faqs-base.js"></script>
+  <script src="js/adapters/remote.js"></script>
+  <script src="js/lib/parsers.js"></script>
+  <script src="js/store.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
