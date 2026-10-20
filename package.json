@@ -1,0 +1,25 @@
+{
+  "name": "plataform-academia",
+  "version": "1.0.0",
+  "description": "Academia Plataform: espacio de capacitaciones con videos, cursos generados con IA y juegos en vivo tipo Kahoot",
+  "type": "module",
+  "main": "server/index.js",
+  "scripts": {
+    "start": "node --no-warnings=ExperimentalWarning server/index.js",
+    "dev": "node --no-warnings=ExperimentalWarning --watch server/index.js",
+    "test": "node --no-warnings=ExperimentalWarning --test --test-concurrency=1 tests/*.test.js"
+  },
+  "engines": {
+    "node": ">=22.13"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.135.0",
+    "exceljs": "^4.4.0",
+    "express": "^5.2.1",
+    "jszip": "^3.10.2",
+    "mammoth": "^1.13.0",
+    "multer": "^2.4.0",
+    "pdf-parse": "^2.4.5",
+    "zod": "^4.6.7"
+  }
+}
