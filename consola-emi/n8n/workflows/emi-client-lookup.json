@@ -1,0 +1,351 @@
+{
+  "name": "Emi · client-lookup",
+  "nodes": [
+    {
+      "id": "98444b3d-2cfc-da9c-785b-67f0e0429ed6",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        300
+      ],
+      "webhookId": "d4aa6c97-9275-37c5-b7d0-a40fa83d8858",
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "emi/client-lookup",
+        "authentication": "headerAuth",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "",
+          "name": "Emi · secreto del webhook"
+        }
+      }
+    },
+    {
+      "id": "f3a97a37-c79e-873c-0116-99e3cd214d5c",
+      "name": "Config",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        220,
+        300
+      ],
+      "parameters": {
+        "jsCode": "// Configuración de Emi (generada desde n8n/src/config.js). Editar aquí o allá y regenerar.\nreturn [{ json: {\n  \"metabase\": {\n    \"baseUrl\": \"https://bi.mesfix.com\",\n    \"cardClientes\": 2346,\n    \"cardOperaciones\": 3794,\n    \"parametroDocumento\": null,\n    \"parametroOperacion\": null\n  },\n  \"clientes\": {\n    \"columnaDocumento\": \"POR_DEFINIR\",\n    \"columnaNombre\": \"POR_DEFINIR\",\n    \"columnaEmail\": null,\n    \"reglas\": [\n      {\n        \"estado\": \"mora\",\n        \"columna\": \"POR_DEFINIR\",\n        \"op\": \"truthy\"\n      },\n      {\n        \"estado\": \"inversionista+contratos_pendientes\",\n        \"columna\": \"POR_DEFINIR\",\n        \"op\": \"truthy\"\n      },\n      {\n        \"estado\": \"inversionista\",\n        \"columna\": \"POR_DEFINIR\",\n        \"op\": \"gt\",\n        \"valor\": 0\n      }\n    ],\n    \"estadoPorDefecto\": \"prospecto\"\n  }\n} }];\n"
+      }
+    },
+    {
+      "id": "37c5df0a-b713-7a69-6443-d477c33a0bd9",
+      "name": "Preparar",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        440,
+        300
+      ],
+      "parameters": {
+        "jsCode": "/* Lógica de los flujos de n8n de Emi.\n * `emiLib` se incrusta tal cual en los nodos Code (n8n/build.js), y los tests la cargan desde aquí,\n * así el código probado es el mismo que corre en n8n. Sin dependencias ni acceso a red. */\nfunction emiLib() {\n  var PEND = 'POR_DEFINIR';\n\n  function norm(s) {\n    return String(s == null ? '' : s).toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '')\n      .replace(/[^a-z0-9]+/g, ' ').trim();\n  }\n  function key(s) { return norm(s).replace(/ /g, '_'); }\n  function digits(s) { return String(s == null ? '' : s).split('-')[0].replace(/\\D/g, ''); }\n  function maskDoc(d) {\n    d = digits(d);\n    if (!d) return '';\n    return (d.length === 9 && /^[89]/.test(d) ? 'NIT' : 'CC') + ' ***' + d.slice(-6);\n  }\n\n  // Valores 'POR_DEFINIR' que impiden operar con seguridad.\n  function missingConfig(cfg, section) {\n    var out = [];\n    (function walk(o, path) {\n      if (o === PEND) out.push(path);\n      else if (o && typeof o === 'object') Object.keys(o).forEach(function (k) { walk(o[k], path ? path + '.' + k : k); });\n    })(cfg[section], section);\n    return out;\n  }\n\n  // ── Validación de requests ──\n  function validate(kind, body) {\n    body = body || {};\n    if (kind === 'client') {\n      var d = digits(body.documento);\n      if (d.length < 5 || d.length > 12) return { error: 'bad_request', detalle: 'documento' };\n      return { ok: true, documento: d };\n    }\n    if (kind === 'operation') {\n      var n = String(body.numero_operacion || '').replace(/\\D/g, '');\n      var e = String(body.empresa || '').trim();\n      if (!n || n.length > 9) return { error: 'bad_request', detalle: 'numero_operacion' };\n      if (e.length < 3 || e.length > 120) return { error: 'bad_request', detalle: 'empresa' };\n      return { ok: true, numero: n, empresa: e };\n    }\n    if (kind === 'escalate') {\n      if (!body.conversation_id || String(body.conversation_id).length > 80) return { error: 'bad_request', detalle: 'conversation_id' };\n      if (!body.motivo) return { error: 'bad_request', detalle: 'motivo' };\n      return { ok: true };\n    }\n    return { error: 'bad_request' };\n  }\n\n  // ── Metabase ──\n  // Acepta /api/card/:id/query ({data:{cols,rows}}) o /query/json (lista de objetos). Claves normalizadas.\n  function metabaseRows(resp) {\n    if (!resp) return [];\n    if (Array.isArray(resp)) return resp.map(function (r) { var o = {}; Object.keys(r).forEach(function (k) { o[key(k)] = r[k]; }); return o; });\n    var data = resp.data || resp;\n    if (!data.cols || !data.rows) return [];\n    var names = data.cols.map(function (c) { return key(c.display_name || c.name); });\n    var alt = data.cols.map(function (c) { return key(c.name); });\n    return data.rows.map(function (row) {\n      var o = {};\n      row.forEach(function (v, i) { o[names[i]] = v; if (!(alt[i] in o)) o[alt[i]] = v; });\n      return o;\n    });\n  }\n  function cardBody(paramName, value) {\n    if (!paramName) return { parameters: [] };\n    return { parameters: [{ type: 'category', target: ['variable', ['template-tag', paramName]], value: value }] };\n  }\n  function col(row, name) { return name ? row[key(name)] : undefined; }\n\n  // HTTP con \"continuar en error\": n8n deja el error en el json del item.\n  function isHttpError(j) {\n    return !j || (j.error !== undefined && j.data === undefined && j.results === undefined && j.id === undefined && !Array.isArray(j));\n  }\n\n  function truthy(v) { var n = norm(v); return n === 'si' || n === 'true' || n === '1' || n === 'x' || n === 'yes' || (typeof v === 'number' && v > 0); }\n  function ruleMatch(rule, row) {\n    var v = col(row, rule.columna);\n    switch (rule.op) {\n      case 'in': return (rule.valor || []).map(norm).indexOf(norm(v)) !== -1;\n      case 'notEmpty': return v !== null && v !== undefined && String(v).trim() !== '';\n      case 'gt': return Number(v) > Number(rule.valor);\n      case 'truthy': return truthy(v);\n      default: return false;\n    }\n  }\n\n  function classifyClient(rows, documento, cfg) {\n    var c = cfg.clientes;\n    var mine = rows.filter(function (r) { return digits(col(r, c.columnaDocumento)) === documento; });\n    if (!mine.length) return { estado: 'no_encontrado' };\n    var estado = c.estadoPorDefecto;\n    for (var i = 0; i < c.reglas.length; i++) {\n      var rule = c.reglas[i];\n      if (mine.some(function (r) { return ruleMatch(rule, r); })) { estado = rule.estado; break; }\n    }\n    var nombre = String(col(mine[0], c.columnaNombre) || '').trim().split(/\\s+/)[0] || null;\n    var email = c.columnaEmail ? String(col(mine[0], c.columnaEmail) || '').trim().toLowerCase() || null : null;\n    return { estado: estado, nombre: nombre ? nombre.charAt(0).toUpperCase() + nombre.slice(1).toLowerCase() : null, email: email };\n  }\n\n  function contactSearchBody(email) {\n    return { filterGroups: [{ filters: [{ propertyName: 'email', operator: 'EQ', value: email }] }], properties: ['email'], limit: 1 };\n  }\n\n  // ── Operaciones ──\n  function stripCompany(s) { return norm(s).replace(/\\b(s a s|sas|s a|sa|ltda|limitada|s en c|e u|eu)\\b/g, ' ').replace(/\\s+/g, ' ').trim(); }\n  function matchEmpresa(input, nit, razon) {\n    var d = digits(input);\n    if (d.length >= 6) return d === digits(nit);\n    var q = stripCompany(input);\n    if (q.length < 4) return false;\n    return stripCompany(razon).indexOf(q) !== -1;\n  }\n\n  function findOperation(rows, numero, empresa, cfg) {\n    var o = cfg.operaciones;\n    var hits = rows.filter(function (r) { return String(col(r, o.columnaNumero)).replace(/\\D/g, '') === numero; });\n    if (!hits.length) return { found: false };\n    var r = hits[0];\n    var nit = digits(col(r, o.columnaNit)), razon = String(col(r, o.columnaRazonSocial) || '');\n    if (!matchEmpresa(empresa, nit, razon)) return { found: false };\n    var estadoRaw = norm(col(r, o.columnaEstado));\n    var estado = o.mapaEstados[estadoRaw];\n    if (!estado) return { error: 'unknown_state', detalle: estadoRaw.slice(0, 40) };\n    var exp = col(r, o.columnaExpediente);\n    return {\n      found: true, numero_operacion: numero, estado_cobro: estado,\n      empresa: { razon_social: razon, nit: nit, tipo_societario: col(r, o.columnaTipoSocietario) || null },\n      fecha_pago_estimada: col(r, o.columnaFechaPago) ? String(col(r, o.columnaFechaPago)).slice(0, 10) : null,\n      expediente: exp ? { numero: String(exp), tipo_proceso: col(r, o.columnaTipoProceso) || null } : null\n    };\n  }\n\n  // Busca correos salientes con la palabra del asunto; el filtro fino por operación/empresa se hace en código.\n  function emailSearchBody(cfg) {\n    var h = cfg.hubspot;\n    return {\n      filterGroups: [{ filters: [\n        { propertyName: 'hs_email_direction', operator: 'EQ', value: 'EMAIL' },\n        { propertyName: 'hs_email_subject', operator: 'CONTAINS_TOKEN', value: h.palabraAsunto }\n      ] }],\n      sorts: [{ propertyName: 'hs_timestamp', direction: 'DESCENDING' }],\n      properties: ['hs_timestamp', 'hs_email_subject', 'hs_email_text', 'hs_email_html', 'hs_email_from_email'],\n      limit: Math.min(100, h.maxCorreos || 50)\n    };\n  }\n\n  function htmlToText(s) {\n    return String(s || '').replace(/<(script|style)[\\s\\S]*?<\\/\\1>/gi, ' ').replace(/<br\\s*\\/?>|<\\/p>/gi, '\\n').replace(/<[^>]+>/g, ' ')\n      .replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '\"');\n  }\n  // Resumen seguro: sin citas de respuestas anteriores, sin documentos, ≤ 300 caracteres.\n  function summarize(text, max) {\n    max = max || 300;\n    var lines = String(text || '').split(/\\r?\\n/);\n    var out = [];\n    for (var i = 0; i < lines.length; i++) {\n      var l = lines[i].trim();\n      if (/^(el|on) .{0,120}(escribi[oó]|wrote):?$/i.test(l) || /^-{2,}\\s*(mensaje original|original message)/i.test(l) || /^de:\\s/i.test(l)) break;\n      if (l.charAt(0) === '>') continue;\n      out.push(l);\n    }\n    var t = out.join(' ').replace(/\\b\\d{7,}\\b/g, function (m) { return maskDoc(m); }).replace(/\\s+/g, ' ').trim();\n    if (t.length <= max) return t;\n    var cut = t.slice(0, max);\n    return cut.slice(0, cut.lastIndexOf(' ') > max * 0.6 ? cut.lastIndexOf(' ') : max).trim() + '…';\n  }\n\n  function pickLastCommunication(results, op, cfg) {\n    var from = norm(cfg.hubspot.remitenteCorreos);\n    var numRe = new RegExp('(^|\\\\D)' + op.numero_operacion + '(\\\\D|$)');\n    var empresa = stripCompany(op.empresa.razon_social);\n    var mails = (results || []).map(function (e) {\n      var p = e.properties || {};\n      var text = p.hs_email_text || htmlToText(p.hs_email_html);\n      return { ts: p.hs_timestamp, asunto: String(p.hs_email_subject || ''), text: text, from: norm(p.hs_email_from_email) };\n    }).filter(function (m) { return !from || !m.from || m.from === from; });\n    var byNum = mails.filter(function (m) { return numRe.test(m.asunto) || numRe.test(m.text); });\n    var pool = byNum.length ? byNum : (empresa ? mails.filter(function (m) { return stripCompany(m.asunto + ' ' + m.text).indexOf(empresa) !== -1; }) : []);\n    if (!pool.length) return null;\n    pool.sort(function (a, b) { return new Date(b.ts) - new Date(a.ts); });\n    var m = pool[0];\n    return { fecha: new Date(m.ts).toISOString().slice(0, 10), asunto: m.asunto.slice(0, 160), resumen: summarize(m.text) };\n  }\n\n  // ── Tickets ──\n  var MOTIVOS = {\n    pidio_asesor: 'Pidió asesor', reclamo: 'Reclamo', baja_confianza: 'Emi no supo responder', cliente_mora: 'Cliente en mora',\n    actualizacion_operacion: 'Pide actualización de operación', error_consulta: 'Falla de consulta', documento_invalido: 'Documento inválido',\n    operacion_no_validada: 'Operación no validada'\n  };\n  function ticketSearchBody(conversationId, cfg) {\n    return { filterGroups: [{ filters: [{ propertyName: cfg.hubspot.propiedadConversacion, operator: 'EQ', value: String(conversationId) }] }], properties: ['hs_pipeline_stage'], limit: 1 };\n  }\n  function ticketCreateBody(p, cfg) {\n    var h = cfg.hubspot;\n    var motivo = MOTIVOS[p.motivo] || String(p.motivo);\n    var ref = p.cliente && p.cliente.ref ? String(p.cliente.ref).slice(0, 20) : 'cliente sin validar';\n    var lines = [\n      'Escalado por Emi (asistente virtual).',\n      'Motivo: ' + motivo,\n      'Intención detectada: ' + (p.intencion || 'n/d') + ' · confianza: ' + (p.confianza == null ? 'n/d' : Number(p.confianza).toFixed(2)),\n      'Cliente: ' + ref + (p.cliente && p.cliente.estado ? ' (' + p.cliente.estado + ')' : ''),\n      p.fuera_horario ? 'FUERA DE HORARIO: contactar el próximo día hábil.' : 'En horario de atención.',\n      '',\n      'Resumen de la conversación:',\n      String(p.resumen || '').replace(/\\b\\d{7,}\\b/g, function (m) { return maskDoc(m); }).slice(0, 3000)\n    ];\n    var props = {\n      subject: 'Emi · ' + motivo + ' · ' + ref,\n      content: lines.join('\\n'),\n      hs_pipeline: String(h.ticketPipeline),\n      hs_pipeline_stage: String(h.ticketEtapa),\n      hs_ticket_priority: p.motivo === 'reclamo' ? 'HIGH' : 'MEDIUM'\n    };\n    props[h.propiedadConversacion] = String(p.conversation_id);\n    if (h.ticketOwnerId) props.hubspot_owner_id = String(h.ticketOwnerId);\n    var body = { properties: props };\n    var cid = p.cliente && p.cliente.id;\n    if (cid && /^\\d+$/.test(String(cid))) {\n      body.associations = [{ to: { id: String(cid) }, types: [{ associationCategory: 'HUBSPOT_DEFINED', associationTypeId: 16 }] }];\n    }\n    return body;\n  }\n\n  return {\n    norm: norm, key: key, digits: digits, maskDoc: maskDoc, missingConfig: missingConfig, validate: validate,\n    metabaseRows: metabaseRows, cardBody: cardBody, isHttpError: isHttpError, classifyClient: classifyClient, contactSearchBody: contactSearchBody,\n    matchEmpresa: matchEmpresa, findOperation: findOperation, emailSearchBody: emailSearchBody, summarize: summarize, htmlToText: htmlToText,\n    pickLastCommunication: pickLastCommunication, ticketSearchBody: ticketSearchBody, ticketCreateBody: ticketCreateBody, MOTIVOS: MOTIVOS\n  };\n}\nconst L = emiLib();\nconst CFG = $('Config').first().json;\nconst BODY = $('Webhook').first().json.body || {};\n\n// ── Preparar ──\nconst faltan = L.missingConfig(CFG, 'clientes');\nif (faltan.length) return [{ json: { ok: false, respuesta: { error: 'not_configured', faltan } } }];\nconst v = L.validate('client', BODY);\nif (!v.ok) return [{ json: { ok: false, respuesta: v } }];\nreturn [{ json: { ok: true, documento: v.documento, metabaseBody: L.cardBody(CFG.metabase.parametroDocumento, v.documento) } }];\n"
+      }
+    },
+    {
+      "id": "ae8c5189-aed7-134b-c04a-9d4583759a22",
+      "name": "¿Válido?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        660,
+        300
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "1c6ccae7-680b-382f-8aa3-13cec49279f1",
+              "leftValue": "={{ $json.ok }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "fe1b1c69-eb47-d85d-838f-87e05c68d93a",
+      "name": "Metabase · 2346 clientes",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        880,
+        200
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Config').first().json.metabase.baseUrl + '/api/card/' + $('Config').first().json.metabase.cardClientes + '/query' }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.metabaseBody) }}",
+        "options": {
+          "timeout": 15000
+        }
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "",
+          "name": "Metabase · API key (x-api-key)"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 1000,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "4cb9b436-cd24-6098-5e15-1b13e349dfdb",
+      "name": "Clasificar cliente",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1100,
+        200
+      ],
+      "parameters": {
+        "jsCode": "/* Lógica de los flujos de n8n de Emi.\n * `emiLib` se incrusta tal cual en los nodos Code (n8n/build.js), y los tests la cargan desde aquí,\n * así el código probado es el mismo que corre en n8n. Sin dependencias ni acceso a red. */\nfunction emiLib() {\n  var PEND = 'POR_DEFINIR';\n\n  function norm(s) {\n    return String(s == null ? '' : s).toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '')\n      .replace(/[^a-z0-9]+/g, ' ').trim();\n  }\n  function key(s) { return norm(s).replace(/ /g, '_'); }\n  function digits(s) { return String(s == null ? '' : s).split('-')[0].replace(/\\D/g, ''); }\n  function maskDoc(d) {\n    d = digits(d);\n    if (!d) return '';\n    return (d.length === 9 && /^[89]/.test(d) ? 'NIT' : 'CC') + ' ***' + d.slice(-6);\n  }\n\n  // Valores 'POR_DEFINIR' que impiden operar con seguridad.\n  function missingConfig(cfg, section) {\n    var out = [];\n    (function walk(o, path) {\n      if (o === PEND) out.push(path);\n      else if (o && typeof o === 'object') Object.keys(o).forEach(function (k) { walk(o[k], path ? path + '.' + k : k); });\n    })(cfg[section], section);\n    return out;\n  }\n\n  // ── Validación de requests ──\n  function validate(kind, body) {\n    body = body || {};\n    if (kind === 'client') {\n      var d = digits(body.documento);\n      if (d.length < 5 || d.length > 12) return { error: 'bad_request', detalle: 'documento' };\n      return { ok: true, documento: d };\n    }\n    if (kind === 'operation') {\n      var n = String(body.numero_operacion || '').replace(/\\D/g, '');\n      var e = String(body.empresa || '').trim();\n      if (!n || n.length > 9) return { error: 'bad_request', detalle: 'numero_operacion' };\n      if (e.length < 3 || e.length > 120) return { error: 'bad_request', detalle: 'empresa' };\n      return { ok: true, numero: n, empresa: e };\n    }\n    if (kind === 'escalate') {\n      if (!body.conversation_id || String(body.conversation_id).length > 80) return { error: 'bad_request', detalle: 'conversation_id' };\n      if (!body.motivo) return { error: 'bad_request', detalle: 'motivo' };\n      return { ok: true };\n    }\n    return { error: 'bad_request' };\n  }\n\n  // ── Metabase ──\n  // Acepta /api/card/:id/query ({data:{cols,rows}}) o /query/json (lista de objetos). Claves normalizadas.\n  function metabaseRows(resp) {\n    if (!resp) return [];\n    if (Array.isArray(resp)) return resp.map(function (r) { var o = {}; Object.keys(r).forEach(function (k) { o[key(k)] = r[k]; }); return o; });\n    var data = resp.data || resp;\n    if (!data.cols || !data.rows) return [];\n    var names = data.cols.map(function (c) { return key(c.display_name || c.name); });\n    var alt = data.cols.map(function (c) { return key(c.name); });\n    return data.rows.map(function (row) {\n      var o = {};\n      row.forEach(function (v, i) { o[names[i]] = v; if (!(alt[i] in o)) o[alt[i]] = v; });\n      return o;\n    });\n  }\n  function cardBody(paramName, value) {\n    if (!paramName) return { parameters: [] };\n    return { parameters: [{ type: 'category', target: ['variable', ['template-tag', paramName]], value: value }] };\n  }\n  function col(row, name) { return name ? row[key(name)] : undefined; }\n\n  // HTTP con \"continuar en error\": n8n deja el error en el json del item.\n  function isHttpError(j) {\n    return !j || (j.error !== undefined && j.data === undefined && j.results === undefined && j.id === undefined && !Array.isArray(j));\n  }\n\n  function truthy(v) { var n = norm(v); return n === 'si' || n === 'true' || n === '1' || n === 'x' || n === 'yes' || (typeof v === 'number' && v > 0); }\n  function ruleMatch(rule, row) {\n    var v = col(row, rule.columna);\n    switch (rule.op) {\n      case 'in': return (rule.valor || []).map(norm).indexOf(norm(v)) !== -1;\n      case 'notEmpty': return v !== null && v !== undefined && String(v).trim() !== '';\n      case 'gt': return Number(v) > Number(rule.valor);\n      case 'truthy': return truthy(v);\n      default: return false;\n    }\n  }\n\n  function classifyClient(rows, documento, cfg) {\n    var c = cfg.clientes;\n    var mine = rows.filter(function (r) { return digits(col(r, c.columnaDocumento)) === documento; });\n    if (!mine.length) return { estado: 'no_encontrado' };\n    var estado = c.estadoPorDefecto;\n    for (var i = 0; i < c.reglas.length; i++) {\n      var rule = c.reglas[i];\n      if (mine.some(function (r) { return ruleMatch(rule, r); })) { estado = rule.estado; break; }\n    }\n    var nombre = String(col(mine[0], c.columnaNombre) || '').trim().split(/\\s+/)[0] || null;\n    var email = c.columnaEmail ? String(col(mine[0], c.columnaEmail) || '').trim().toLowerCase() || null : null;\n    return { estado: estado, nombre: nombre ? nombre.charAt(0).toUpperCase() + nombre.slice(1).toLowerCase() : null, email: email };\n  }\n\n  function contactSearchBody(email) {\n    return { filterGroups: [{ filters: [{ propertyName: 'email', operator: 'EQ', value: email }] }], properties: ['email'], limit: 1 };\n  }\n\n  // ── Operaciones ──\n  function stripCompany(s) { return norm(s).replace(/\\b(s a s|sas|s a|sa|ltda|limitada|s en c|e u|eu)\\b/g, ' ').replace(/\\s+/g, ' ').trim(); }\n  function matchEmpresa(input, nit, razon) {\n    var d = digits(input);\n    if (d.length >= 6) return d === digits(nit);\n    var q = stripCompany(input);\n    if (q.length < 4) return false;\n    return stripCompany(razon).indexOf(q) !== -1;\n  }\n\n  function findOperation(rows, numero, empresa, cfg) {\n    var o = cfg.operaciones;\n    var hits = rows.filter(function (r) { return String(col(r, o.columnaNumero)).replace(/\\D/g, '') === numero; });\n    if (!hits.length) return { found: false };\n    var r = hits[0];\n    var nit = digits(col(r, o.columnaNit)), razon = String(col(r, o.columnaRazonSocial) || '');\n    if (!matchEmpresa(empresa, nit, razon)) return { found: false };\n    var estadoRaw = norm(col(r, o.columnaEstado));\n    var estado = o.mapaEstados[estadoRaw];\n    if (!estado) return { error: 'unknown_state', detalle: estadoRaw.slice(0, 40) };\n    var exp = col(r, o.columnaExpediente);\n    return {\n      found: true, numero_operacion: numero, estado_cobro: estado,\n      empresa: { razon_social: razon, nit: nit, tipo_societario: col(r, o.columnaTipoSocietario) || null },\n      fecha_pago_estimada: col(r, o.columnaFechaPago) ? String(col(r, o.columnaFechaPago)).slice(0, 10) : null,\n      expediente: exp ? { numero: String(exp), tipo_proceso: col(r, o.columnaTipoProceso) || null } : null\n    };\n  }\n\n  // Busca correos salientes con la palabra del asunto; el filtro fino por operación/empresa se hace en código.\n  function emailSearchBody(cfg) {\n    var h = cfg.hubspot;\n    return {\n      filterGroups: [{ filters: [\n        { propertyName: 'hs_email_direction', operator: 'EQ', value: 'EMAIL' },\n        { propertyName: 'hs_email_subject', operator: 'CONTAINS_TOKEN', value: h.palabraAsunto }\n      ] }],\n      sorts: [{ propertyName: 'hs_timestamp', direction: 'DESCENDING' }],\n      properties: ['hs_timestamp', 'hs_email_subject', 'hs_email_text', 'hs_email_html', 'hs_email_from_email'],\n      limit: Math.min(100, h.maxCorreos || 50)\n    };\n  }\n\n  function htmlToText(s) {\n    return String(s || '').replace(/<(script|style)[\\s\\S]*?<\\/\\1>/gi, ' ').replace(/<br\\s*\\/?>|<\\/p>/gi, '\\n').replace(/<[^>]+>/g, ' ')\n      .replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '\"');\n  }\n  // Resumen seguro: sin citas de respuestas anteriores, sin documentos, ≤ 300 caracteres.\n  function summarize(text, max) {\n    max = max || 300;\n    var lines = String(text || '').split(/\\r?\\n/);\n    var out = [];\n    for (var i = 0; i < lines.length; i++) {\n      var l = lines[i].trim();\n      if (/^(el|on) .{0,120}(escribi[oó]|wrote):?$/i.test(l) || /^-{2,}\\s*(mensaje original|original message)/i.test(l) || /^de:\\s/i.test(l)) break;\n      if (l.charAt(0) === '>') continue;\n      out.push(l);\n    }\n    var t = out.join(' ').replace(/\\b\\d{7,}\\b/g, function (m) { return maskDoc(m); }).replace(/\\s+/g, ' ').trim();\n    if (t.length <= max) return t;\n    var cut = t.slice(0, max);\n    return cut.slice(0, cut.lastIndexOf(' ') > max * 0.6 ? cut.lastIndexOf(' ') : max).trim() + '…';\n  }\n\n  function pickLastCommunication(results, op, cfg) {\n    var from = norm(cfg.hubspot.remitenteCorreos);\n    var numRe = new RegExp('(^|\\\\D)' + op.numero_operacion + '(\\\\D|$)');\n    var empresa = stripCompany(op.empresa.razon_social);\n    var mails = (results || []).map(function (e) {\n      var p = e.properties || {};\n      var text = p.hs_email_text || htmlToText(p.hs_email_html);\n      return { ts: p.hs_timestamp, asunto: String(p.hs_email_subject || ''), text: text, from: norm(p.hs_email_from_email) };\n    }).filter(function (m) { return !from || !m.from || m.from === from; });\n    var byNum = mails.filter(function (m) { return numRe.test(m.asunto) || numRe.test(m.text); });\n    var pool = byNum.length ? byNum : (empresa ? mails.filter(function (m) { return stripCompany(m.asunto + ' ' + m.text).indexOf(empresa) !== -1; }) : []);\n    if (!pool.length) return null;\n    pool.sort(function (a, b) { return new Date(b.ts) - new Date(a.ts); });\n    var m = pool[0];\n    return { fecha: new Date(m.ts).toISOString().slice(0, 10), asunto: m.asunto.slice(0, 160), resumen: summarize(m.text) };\n  }\n\n  // ── Tickets ──\n  var MOTIVOS = {\n    pidio_asesor: 'Pidió asesor', reclamo: 'Reclamo', baja_confianza: 'Emi no supo responder', cliente_mora: 'Cliente en mora',\n    actualizacion_operacion: 'Pide actualización de operación', error_consulta: 'Falla de consulta', documento_invalido: 'Documento inválido',\n    operacion_no_validada: 'Operación no validada'\n  };\n  function ticketSearchBody(conversationId, cfg) {\n    return { filterGroups: [{ filters: [{ propertyName: cfg.hubspot.propiedadConversacion, operator: 'EQ', value: String(conversationId) }] }], properties: ['hs_pipeline_stage'], limit: 1 };\n  }\n  function ticketCreateBody(p, cfg) {\n    var h = cfg.hubspot;\n    var motivo = MOTIVOS[p.motivo] || String(p.motivo);\n    var ref = p.cliente && p.cliente.ref ? String(p.cliente.ref).slice(0, 20) : 'cliente sin validar';\n    var lines = [\n      'Escalado por Emi (asistente virtual).',\n      'Motivo: ' + motivo,\n      'Intención detectada: ' + (p.intencion || 'n/d') + ' · confianza: ' + (p.confianza == null ? 'n/d' : Number(p.confianza).toFixed(2)),\n      'Cliente: ' + ref + (p.cliente && p.cliente.estado ? ' (' + p.cliente.estado + ')' : ''),\n      p.fuera_horario ? 'FUERA DE HORARIO: contactar el próximo día hábil.' : 'En horario de atención.',\n      '',\n      'Resumen de la conversación:',\n      String(p.resumen || '').replace(/\\b\\d{7,}\\b/g, function (m) { return maskDoc(m); }).slice(0, 3000)\n    ];\n    var props = {\n      subject: 'Emi · ' + motivo + ' · ' + ref,\n      content: lines.join('\\n'),\n      hs_pipeline: String(h.ticketPipeline),\n      hs_pipeline_stage: String(h.ticketEtapa),\n      hs_ticket_priority: p.motivo === 'reclamo' ? 'HIGH' : 'MEDIUM'\n    };\n    props[h.propiedadConversacion] = String(p.conversation_id);\n    if (h.ticketOwnerId) props.hubspot_owner_id = String(h.ticketOwnerId);\n    var body = { properties: props };\n    var cid = p.cliente && p.cliente.id;\n    if (cid && /^\\d+$/.test(String(cid))) {\n      body.associations = [{ to: { id: String(cid) }, types: [{ associationCategory: 'HUBSPOT_DEFINED', associationTypeId: 16 }] }];\n    }\n    return body;\n  }\n\n  return {\n    norm: norm, key: key, digits: digits, maskDoc: maskDoc, missingConfig: missingConfig, validate: validate,\n    metabaseRows: metabaseRows, cardBody: cardBody, isHttpError: isHttpError, classifyClient: classifyClient, contactSearchBody: contactSearchBody,\n    matchEmpresa: matchEmpresa, findOperation: findOperation, emailSearchBody: emailSearchBody, summarize: summarize, htmlToText: htmlToText,\n    pickLastCommunication: pickLastCommunication, ticketSearchBody: ticketSearchBody, ticketCreateBody: ticketCreateBody, MOTIVOS: MOTIVOS\n  };\n}\nconst L = emiLib();\nconst CFG = $('Config').first().json;\nconst BODY = $('Webhook').first().json.body || {};\n\n// ── Clasificar cliente ──\nconst items = $input.all().map((i) => i.json);\nconst resp = items.length === 1 ? items[0] : items;\nif (L.isHttpError(resp)) return [{ json: { buscarContacto: false, respuesta: { error: 'upstream_unavailable', fuente: 'metabase' } } }];\nconst doc = $('Preparar').first().json.documento;\nconst c = L.classifyClient(L.metabaseRows(resp), doc, CFG);\nconst respuesta = { estado: c.estado, nombre: c.nombre || null, ref_masked: L.maskDoc(doc) };\nreturn [{ json: { buscarContacto: !!c.email, contactBody: c.email ? L.contactSearchBody(c.email) : null, respuesta } }];\n"
+      }
+    },
+    {
+      "id": "759a27d9-abff-1ab4-14d9-1fe729e59953",
+      "name": "¿Tiene email?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1320,
+        200
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "65cc716a-4cf9-3b46-dc79-a82609861203",
+              "leftValue": "={{ $json.buscarContacto }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "0319b91e-b0d2-d3bd-b5df-b30b3e195493",
+      "name": "HubSpot · buscar contacto",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1540,
+        100
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.hubapi.com/crm/v3/objects/contacts/search",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "hubspotAppToken",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.contactBody) }}",
+        "options": {
+          "timeout": 8000
+        }
+      },
+      "credentials": {
+        "hubspotAppToken": {
+          "id": "",
+          "name": "HubSpot · Emi (Private App)"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 1000,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "1cc910b3-9baf-2d89-af4c-c6150715adc3",
+      "name": "Respuesta cliente",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1760,
+        200
+      ],
+      "parameters": {
+        "jsCode": "/* Lógica de los flujos de n8n de Emi.\n * `emiLib` se incrusta tal cual en los nodos Code (n8n/build.js), y los tests la cargan desde aquí,\n * así el código probado es el mismo que corre en n8n. Sin dependencias ni acceso a red. */\nfunction emiLib() {\n  var PEND = 'POR_DEFINIR';\n\n  function norm(s) {\n    return String(s == null ? '' : s).toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '')\n      .replace(/[^a-z0-9]+/g, ' ').trim();\n  }\n  function key(s) { return norm(s).replace(/ /g, '_'); }\n  function digits(s) { return String(s == null ? '' : s).split('-')[0].replace(/\\D/g, ''); }\n  function maskDoc(d) {\n    d = digits(d);\n    if (!d) return '';\n    return (d.length === 9 && /^[89]/.test(d) ? 'NIT' : 'CC') + ' ***' + d.slice(-6);\n  }\n\n  // Valores 'POR_DEFINIR' que impiden operar con seguridad.\n  function missingConfig(cfg, section) {\n    var out = [];\n    (function walk(o, path) {\n      if (o === PEND) out.push(path);\n      else if (o && typeof o === 'object') Object.keys(o).forEach(function (k) { walk(o[k], path ? path + '.' + k : k); });\n    })(cfg[section], section);\n    return out;\n  }\n\n  // ── Validación de requests ──\n  function validate(kind, body) {\n    body = body || {};\n    if (kind === 'client') {\n      var d = digits(body.documento);\n      if (d.length < 5 || d.length > 12) return { error: 'bad_request', detalle: 'documento' };\n      return { ok: true, documento: d };\n    }\n    if (kind === 'operation') {\n      var n = String(body.numero_operacion || '').replace(/\\D/g, '');\n      var e = String(body.empresa || '').trim();\n      if (!n || n.length > 9) return { error: 'bad_request', detalle: 'numero_operacion' };\n      if (e.length < 3 || e.length > 120) return { error: 'bad_request', detalle: 'empresa' };\n      return { ok: true, numero: n, empresa: e };\n    }\n    if (kind === 'escalate') {\n      if (!body.conversation_id || String(body.conversation_id).length > 80) return { error: 'bad_request', detalle: 'conversation_id' };\n      if (!body.motivo) return { error: 'bad_request', detalle: 'motivo' };\n      return { ok: true };\n    }\n    return { error: 'bad_request' };\n  }\n\n  // ── Metabase ──\n  // Acepta /api/card/:id/query ({data:{cols,rows}}) o /query/json (lista de objetos). Claves normalizadas.\n  function metabaseRows(resp) {\n    if (!resp) return [];\n    if (Array.isArray(resp)) return resp.map(function (r) { var o = {}; Object.keys(r).forEach(function (k) { o[key(k)] = r[k]; }); return o; });\n    var data = resp.data || resp;\n    if (!data.cols || !data.rows) return [];\n    var names = data.cols.map(function (c) { return key(c.display_name || c.name); });\n    var alt = data.cols.map(function (c) { return key(c.name); });\n    return data.rows.map(function (row) {\n      var o = {};\n      row.forEach(function (v, i) { o[names[i]] = v; if (!(alt[i] in o)) o[alt[i]] = v; });\n      return o;\n    });\n  }\n  function cardBody(paramName, value) {\n    if (!paramName) return { parameters: [] };\n    return { parameters: [{ type: 'category', target: ['variable', ['template-tag', paramName]], value: value }] };\n  }\n  function col(row, name) { return name ? row[key(name)] : undefined; }\n\n  // HTTP con \"continuar en error\": n8n deja el error en el json del item.\n  function isHttpError(j) {\n    return !j || (j.error !== undefined && j.data === undefined && j.results === undefined && j.id === undefined && !Array.isArray(j));\n  }\n\n  function truthy(v) { var n = norm(v); return n === 'si' || n === 'true' || n === '1' || n === 'x' || n === 'yes' || (typeof v === 'number' && v > 0); }\n  function ruleMatch(rule, row) {\n    var v = col(row, rule.columna);\n    switch (rule.op) {\n      case 'in': return (rule.valor || []).map(norm).indexOf(norm(v)) !== -1;\n      case 'notEmpty': return v !== null && v !== undefined && String(v).trim() !== '';\n      case 'gt': return Number(v) > Number(rule.valor);\n      case 'truthy': return truthy(v);\n      default: return false;\n    }\n  }\n\n  function classifyClient(rows, documento, cfg) {\n    var c = cfg.clientes;\n    var mine = rows.filter(function (r) { return digits(col(r, c.columnaDocumento)) === documento; });\n    if (!mine.length) return { estado: 'no_encontrado' };\n    var estado = c.estadoPorDefecto;\n    for (var i = 0; i < c.reglas.length; i++) {\n      var rule = c.reglas[i];\n      if (mine.some(function (r) { return ruleMatch(rule, r); })) { estado = rule.estado; break; }\n    }\n    var nombre = String(col(mine[0], c.columnaNombre) || '').trim().split(/\\s+/)[0] || null;\n    var email = c.columnaEmail ? String(col(mine[0], c.columnaEmail) || '').trim().toLowerCase() || null : null;\n    return { estado: estado, nombre: nombre ? nombre.charAt(0).toUpperCase() + nombre.slice(1).toLowerCase() : null, email: email };\n  }\n\n  function contactSearchBody(email) {\n    return { filterGroups: [{ filters: [{ propertyName: 'email', operator: 'EQ', value: email }] }], properties: ['email'], limit: 1 };\n  }\n\n  // ── Operaciones ──\n  function stripCompany(s) { return norm(s).replace(/\\b(s a s|sas|s a|sa|ltda|limitada|s en c|e u|eu)\\b/g, ' ').replace(/\\s+/g, ' ').trim(); }\n  function matchEmpresa(input, nit, razon) {\n    var d = digits(input);\n    if (d.length >= 6) return d === digits(nit);\n    var q = stripCompany(input);\n    if (q.length < 4) return false;\n    return stripCompany(razon).indexOf(q) !== -1;\n  }\n\n  function findOperation(rows, numero, empresa, cfg) {\n    var o = cfg.operaciones;\n    var hits = rows.filter(function (r) { return String(col(r, o.columnaNumero)).replace(/\\D/g, '') === numero; });\n    if (!hits.length) return { found: false };\n    var r = hits[0];\n    var nit = digits(col(r, o.columnaNit)), razon = String(col(r, o.columnaRazonSocial) || '');\n    if (!matchEmpresa(empresa, nit, razon)) return { found: false };\n    var estadoRaw = norm(col(r, o.columnaEstado));\n    var estado = o.mapaEstados[estadoRaw];\n    if (!estado) return { error: 'unknown_state', detalle: estadoRaw.slice(0, 40) };\n    var exp = col(r, o.columnaExpediente);\n    return {\n      found: true, numero_operacion: numero, estado_cobro: estado,\n      empresa: { razon_social: razon, nit: nit, tipo_societario: col(r, o.columnaTipoSocietario) || null },\n      fecha_pago_estimada: col(r, o.columnaFechaPago) ? String(col(r, o.columnaFechaPago)).slice(0, 10) : null,\n      expediente: exp ? { numero: String(exp), tipo_proceso: col(r, o.columnaTipoProceso) || null } : null\n    };\n  }\n\n  // Busca correos salientes con la palabra del asunto; el filtro fino por operación/empresa se hace en código.\n  function emailSearchBody(cfg) {\n    var h = cfg.hubspot;\n    return {\n      filterGroups: [{ filters: [\n        { propertyName: 'hs_email_direction', operator: 'EQ', value: 'EMAIL' },\n        { propertyName: 'hs_email_subject', operator: 'CONTAINS_TOKEN', value: h.palabraAsunto }\n      ] }],\n      sorts: [{ propertyName: 'hs_timestamp', direction: 'DESCENDING' }],\n      properties: ['hs_timestamp', 'hs_email_subject', 'hs_email_text', 'hs_email_html', 'hs_email_from_email'],\n      limit: Math.min(100, h.maxCorreos || 50)\n    };\n  }\n\n  function htmlToText(s) {\n    return String(s || '').replace(/<(script|style)[\\s\\S]*?<\\/\\1>/gi, ' ').replace(/<br\\s*\\/?>|<\\/p>/gi, '\\n').replace(/<[^>]+>/g, ' ')\n      .replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '\"');\n  }\n  // Resumen seguro: sin citas de respuestas anteriores, sin documentos, ≤ 300 caracteres.\n  function summarize(text, max) {\n    max = max || 300;\n    var lines = String(text || '').split(/\\r?\\n/);\n    var out = [];\n    for (var i = 0; i < lines.length; i++) {\n      var l = lines[i].trim();\n      if (/^(el|on) .{0,120}(escribi[oó]|wrote):?$/i.test(l) || /^-{2,}\\s*(mensaje original|original message)/i.test(l) || /^de:\\s/i.test(l)) break;\n      if (l.charAt(0) === '>') continue;\n      out.push(l);\n    }\n    var t = out.join(' ').replace(/\\b\\d{7,}\\b/g, function (m) { return maskDoc(m); }).replace(/\\s+/g, ' ').trim();\n    if (t.length <= max) return t;\n    var cut = t.slice(0, max);\n    return cut.slice(0, cut.lastIndexOf(' ') > max * 0.6 ? cut.lastIndexOf(' ') : max).trim() + '…';\n  }\n\n  function pickLastCommunication(results, op, cfg) {\n    var from = norm(cfg.hubspot.remitenteCorreos);\n    var numRe = new RegExp('(^|\\\\D)' + op.numero_operacion + '(\\\\D|$)');\n    var empresa = stripCompany(op.empresa.razon_social);\n    var mails = (results || []).map(function (e) {\n      var p = e.properties || {};\n      var text = p.hs_email_text || htmlToText(p.hs_email_html);\n      return { ts: p.hs_timestamp, asunto: String(p.hs_email_subject || ''), text: text, from: norm(p.hs_email_from_email) };\n    }).filter(function (m) { return !from || !m.from || m.from === from; });\n    var byNum = mails.filter(function (m) { return numRe.test(m.asunto) || numRe.test(m.text); });\n    var pool = byNum.length ? byNum : (empresa ? mails.filter(function (m) { return stripCompany(m.asunto + ' ' + m.text).indexOf(empresa) !== -1; }) : []);\n    if (!pool.length) return null;\n    pool.sort(function (a, b) { return new Date(b.ts) - new Date(a.ts); });\n    var m = pool[0];\n    return { fecha: new Date(m.ts).toISOString().slice(0, 10), asunto: m.asunto.slice(0, 160), resumen: summarize(m.text) };\n  }\n\n  // ── Tickets ──\n  var MOTIVOS = {\n    pidio_asesor: 'Pidió asesor', reclamo: 'Reclamo', baja_confianza: 'Emi no supo responder', cliente_mora: 'Cliente en mora',\n    actualizacion_operacion: 'Pide actualización de operación', error_consulta: 'Falla de consulta', documento_invalido: 'Documento inválido',\n    operacion_no_validada: 'Operación no validada'\n  };\n  function ticketSearchBody(conversationId, cfg) {\n    return { filterGroups: [{ filters: [{ propertyName: cfg.hubspot.propiedadConversacion, operator: 'EQ', value: String(conversationId) }] }], properties: ['hs_pipeline_stage'], limit: 1 };\n  }\n  function ticketCreateBody(p, cfg) {\n    var h = cfg.hubspot;\n    var motivo = MOTIVOS[p.motivo] || String(p.motivo);\n    var ref = p.cliente && p.cliente.ref ? String(p.cliente.ref).slice(0, 20) : 'cliente sin validar';\n    var lines = [\n      'Escalado por Emi (asistente virtual).',\n      'Motivo: ' + motivo,\n      'Intención detectada: ' + (p.intencion || 'n/d') + ' · confianza: ' + (p.confianza == null ? 'n/d' : Number(p.confianza).toFixed(2)),\n      'Cliente: ' + ref + (p.cliente && p.cliente.estado ? ' (' + p.cliente.estado + ')' : ''),\n      p.fuera_horario ? 'FUERA DE HORARIO: contactar el próximo día hábil.' : 'En horario de atención.',\n      '',\n      'Resumen de la conversación:',\n      String(p.resumen || '').replace(/\\b\\d{7,}\\b/g, function (m) { return maskDoc(m); }).slice(0, 3000)\n    ];\n    var props = {\n      subject: 'Emi · ' + motivo + ' · ' + ref,\n      content: lines.join('\\n'),\n      hs_pipeline: String(h.ticketPipeline),\n      hs_pipeline_stage: String(h.ticketEtapa),\n      hs_ticket_priority: p.motivo === 'reclamo' ? 'HIGH' : 'MEDIUM'\n    };\n    props[h.propiedadConversacion] = String(p.conversation_id);\n    if (h.ticketOwnerId) props.hubspot_owner_id = String(h.ticketOwnerId);\n    var body = { properties: props };\n    var cid = p.cliente && p.cliente.id;\n    if (cid && /^\\d+$/.test(String(cid))) {\n      body.associations = [{ to: { id: String(cid) }, types: [{ associationCategory: 'HUBSPOT_DEFINED', associationTypeId: 16 }] }];\n    }\n    return body;\n  }\n\n  return {\n    norm: norm, key: key, digits: digits, maskDoc: maskDoc, missingConfig: missingConfig, validate: validate,\n    metabaseRows: metabaseRows, cardBody: cardBody, isHttpError: isHttpError, classifyClient: classifyClient, contactSearchBody: contactSearchBody,\n    matchEmpresa: matchEmpresa, findOperation: findOperation, emailSearchBody: emailSearchBody, summarize: summarize, htmlToText: htmlToText,\n    pickLastCommunication: pickLastCommunication, ticketSearchBody: ticketSearchBody, ticketCreateBody: ticketCreateBody, MOTIVOS: MOTIVOS\n  };\n}\nconst L = emiLib();\nconst CFG = $('Config').first().json;\nconst BODY = $('Webhook').first().json.body || {};\n\n// ── Respuesta cliente ──\nconst respuesta = Object.assign({}, $('Clasificar cliente').first().json.respuesta);\nconst j = $input.first().json;\n// El contacto de HubSpot es opcional: si la búsqueda falla, la respuesta sigue sin hubspot_id.\nif (j && Array.isArray(j.results) && j.results[0]) respuesta.hubspot_id = String(j.results[0].id);\nreturn [{ json: { respuesta } }];\n"
+      }
+    },
+    {
+      "id": "c0f9ce0b-3545-5d45-260c-9d59df20d51c",
+      "name": "Responder",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        1980,
+        300
+      ],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify($json.respuesta) }}",
+        "options": {}
+      }
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Config": {
+      "main": [
+        [
+          {
+            "node": "Preparar",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Preparar": {
+      "main": [
+        [
+          {
+            "node": "¿Válido?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "¿Válido?": {
+      "main": [
+        [
+          {
+            "node": "Metabase · 2346 clientes",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Responder",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Metabase · 2346 clientes": {
+      "main": [
+        [
+          {
+            "node": "Clasificar cliente",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Clasificar cliente": {
+      "main": [
+        [
+          {
+            "node": "¿Tiene email?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "¿Tiene email?": {
+      "main": [
+        [
+          {
+            "node": "HubSpot · buscar contacto",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respuesta cliente",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HubSpot · buscar contacto": {
+      "main": [
+        [
+          {
+            "node": "Respuesta cliente",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Respuesta cliente": {
+      "main": [
+        [
+          {
+            "node": "Responder",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "saveDataSuccessExecution": "none",
+    "saveDataErrorExecution": "all",
+    "saveManualExecutions": true,
+    "timezone": "America/Bogota"
+  },
+  "tags": [],
+  "pinData": {}
+}

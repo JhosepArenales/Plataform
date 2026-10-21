@@ -1,0 +1,26 @@
+{
+  "clientes": {
+    "data": {
+      "cols": [{ "name": "documento", "display_name": "Documento" }, { "name": "nombre", "display_name": "Nombre" }, { "name": "email", "display_name": "Email" },
+               { "name": "en_mora", "display_name": "En mora" }, { "name": "contratos_pendientes", "display_name": "Contratos pendientes" }, { "name": "inversiones", "display_name": "Inversiones" }],
+      "rows": [
+        ["79378202", "CARLOS PÉREZ", "carlos@example.com", "No", "No", 4],
+        ["1032416400", "laura gómez", "laura@example.com", "No", "Sí", 2],
+        ["79491944", "Andrés Ruiz", null, "Sí", "No", 1],
+        ["900876543", "Comercializadora Ejemplo SAS", null, "No", "No", 0]
+      ]
+    }
+  },
+  "operaciones": {
+    "data": {
+      "cols": [{ "name": "operacion", "display_name": "Operación" }, { "name": "nit_pagador", "display_name": "NIT pagador" }, { "name": "pagador", "display_name": "Pagador" },
+               { "name": "estado", "display_name": "Estado" }, { "name": "fecha_pago", "display_name": "Fecha pago" }],
+      "rows": [
+        [7981, "900111222", "Constructora Demo Andina S.A.S.", "Al día", "2026-11-30T00:00:00Z"],
+        [6543, "900333444-1", "Logística Ficticia del Caribe SAS", "Cobro prejurídico", null],
+        [13058, "900333444", "Logística Ficticia del Caribe SAS", "Jurídico", null],
+        [5000, "900555666", "Rara SAS", "En revisión", null]
+      ]
+    }
+  }
+}

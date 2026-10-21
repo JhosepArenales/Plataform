@@ -1,0 +1,14 @@
+{
+  "emails": {
+    "results": [
+      { "id": "1", "properties": { "hs_timestamp": "2026-10-14T15:00:00Z", "hs_email_subject": "Actualización estado del proceso – operación 13058", "hs_email_text": "La pagadora fue admitida en reorganización.", "hs_email_from_email": "info@mesfix.com" } },
+      { "id": "2", "properties": { "hs_timestamp": "2026-10-08T15:00:00Z", "hs_email_subject": "Actualización | Logística Ficticia – operación 6543", "hs_email_html": "<p>La pagadora presentó un <b>acuerdo de pago</b>. Cédula 1032416400.</p><p>El lun, 7 oct 2026 a las 9:00, Juan escribió:</p><p>&gt; texto viejo</p>", "hs_email_from_email": "info@mesfix.com" } },
+      { "id": "3", "properties": { "hs_timestamp": "2026-09-02T15:00:00Z", "hs_email_subject": "Actualización estado del proceso – operación 6543", "hs_email_text": "Iniciamos cobro prejurídico.", "hs_email_from_email": "info@mesfix.com" } },
+      { "id": "4", "properties": { "hs_timestamp": "2026-10-19T15:00:00Z", "hs_email_subject": "Actualización operación 6543 (reenviado por un tercero)", "hs_email_text": "Spam", "hs_email_from_email": "otro@example.com" } }
+    ]
+  },
+  "contact": { "results": [{ "id": "555", "properties": { "email": "carlos@example.com" } }] },
+  "ticket_none": { "results": [] },
+  "ticket_existing": { "results": [{ "id": "987", "properties": {} }] },
+  "ticket_created": { "id": "1234", "properties": {} }
+}

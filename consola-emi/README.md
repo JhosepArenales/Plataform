@@ -16,14 +16,15 @@ Consola para probar y administrar a Emi, la asistente virtual de Mesfix. Se publ
 | `js/store.js` | Datos: `/api/db/<tabla>` del Deployer; modo local solo fuera de producción |
 | `js/lib/parsers.js` | CSV, TXT, DOCX, XLSX y exportar/importar con validación |
 | `deploy/credentials.template.json` | Esquema de BD + conexión a n8n (sin secretos) |
-| `n8n/README.md` | Contrato de los webhooks y fuentes (Metabase 2346 / 3794, HubSpot) |
+| `n8n/` | Flujos importables de n8n (`workflows/`), generador (`build.js`), configuración y lógica (`src/`), prueba de humo (`smoke.sh`) y guía (`README.md`) |
 | `tests/*.test.js` | `node:test`, sin dependencias |
 
 ## Correr localmente
 
 ```bash
 python3 -m http.server 8765    # abre http://localhost:8765 (modo local: datos en el navegador)
-node --test tests/*.test.js     # 107 pruebas
+node --test tests/*.test.js     # 138 pruebas
+node n8n/build.js               # regenera los flujos de n8n tras editar n8n/src/
 ```
 
 ## Motor (orden de decisión)
