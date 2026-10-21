@@ -288,9 +288,9 @@
       '<dt>Intención</dt><dd>' + esc(d.intencion || '—') + '</dd>' +
       '<dt>Tipo</dt><dd>' + esc(d.tipo || '—') + '</dd>' +
       '<dt>FAQ fuente</dt><dd>' + (d.faqId ? '#' + d.faqId + ' · ' + esc(d.faqPregunta || '') : '—') + '</dd>' +
-      '<dt>Origen</dt><dd>' + esc(d.origen || '—') + (d.error ? ' <span class="badge danger">' + esc(d.error) + '</span>' : '') + '</dd>' +
+      '<dt>Origen</dt><dd>' + esc(d.origen || '—') + (d.error ? ' <span class="badge danger">' + esc(d.error) + '</span>' : '') + (d.detalle ? '<div class="small" style="color:var(--danger)">' + esc(d.detalle) + '</div>' : '') + '</dd>' +
       '<dt>Confianza</dt><dd><span class="badge ' + confCls + '">' + conf + '</span> <span class="muted">umbral ' + app.cfg.threshold + '</span></dd>' +
-      '<dt>Escalamiento</dt><dd>' + (esc_ ? esc(esc_.motivo) + ' · ticket ' + esc(esc_.ticketId || 'error') + (esc_.created ? ' (nuevo)' : ' (existente)') + (esc_.fueraHorario ? ' · fuera de horario' : '') : 'no') + '</dd>' +
+      '<dt>Escalamiento</dt><dd>' + (esc_ ? esc(esc_.motivo) + ' · ticket ' + esc(esc_.ticketId || ('error' + (esc_.detalle ? ': ' + esc_.detalle : ''))) + (esc_.created ? ' (nuevo)' : ' (existente)') + (esc_.fueraHorario ? ' · fuera de horario' : '') : 'no') + '</dd>' +
       '<dt>Cliente</dt><dd>' + (d.cliente ? esc(d.cliente.ref + ' · ' + d.cliente.estado) : '—') + '</dd>' +
       '<dt>Latencia</dt><dd>' + (d.latencyMs != null ? d.latencyMs + ' ms' : '—') + '</dd>' +
       '</dl>' +
@@ -313,7 +313,8 @@
         '<div class="card"><div class="card-head"><h3>Fuente de datos</h3></div><div class="seg" role="group" aria-label="Fuente de datos">' +
         '<button data-mode="mock" class="' + (app.mode === 'mock' ? 'on' : '') + '">Mock</button><button data-mode="remoto" class="' + (app.mode === 'remoto' ? 'on' : '') + '">Remoto (n8n)</button></div>' +
         '<p class="small muted" style="margin:10px 0 0">' + (app.mode === 'mock' ? 'Documentos: 79378202 · 1032416400 · 79491944 · 900876543.<br>Operaciones: 7981 (NIT 900111222) · 6543 y 13058 (NIT 900333444).' : 'Consulta Metabase/HubSpot a través de los webhooks de n8n. Si n8n aún no está configurado, Emi responderá que no tiene información suficiente.') + '</p>' +
-        '<div class="row" style="margin-top:12px"><button class="btn sm" data-act="new-conv">Nueva conversación</button></div></div>' +
+        '<div class="row" style="margin-top:12px"><button class="btn sm" data-act="new-conv">Nueva conversación</button>' + (app.mode === 'remoto' ? '<button class="btn sm" data-act="ping">Probar conexión n8n</button>' : '') + '</div>' +
+        (app.mode === 'remoto' ? '<div id="ping" class="small" style="margin-top:10px"></div><p class="small" style="margin:8px 0 0;color:var(--warn)">En modo Remoto un escalamiento crea un ticket real en HubSpot.</p>' : '') + '</div>' +
         '<div class="card"><h3>Debug de la respuesta</h3><div id="debug"></div></div></div></div>';
     },
     mount: function (root) {
@@ -328,6 +329,7 @@
         if (t.dataset.say) return sendMessage(t.dataset.say);
         if (t.dataset.mode) { if (app.mode !== t.dataset.mode) { app.mode = t.dataset.mode; newConversation(); render(); } return; }
         if (t.dataset.act === 'new-conv') { newConversation(); render(); return; }
+        if (t.dataset.act === 'ping') { pingN8n(); return; }
         if (t.dataset.fb) {
           e.stopPropagation();
           var item = app.conv.items[+t.dataset.i];
@@ -340,6 +342,32 @@
       };
     }
   };
+
+  // Diagnóstico: llama a los webhooks de consulta (no al de tickets) y muestra la respuesta tal cual.
+  function pingN8n() {
+    var el = $('#ping'); if (!el) return;
+    var checks = [
+      ['client-lookup', { documento: '1000000' }],
+      ['operation-lookup', { numero_operacion: '1', empresa: 'prueba de conexion' }]
+    ];
+    el.innerHTML = '<span class="muted">Probando…</span>';
+    Promise.all(checks.map(function (c) {
+      var t0 = Date.now();
+      return fetch(R.DEFAULTS.base + '/' + c[0], { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(c[1]) })
+        .then(function (r) { return r.text().then(function (txt) { return { name: c[0], status: r.status, body: txt, ms: Date.now() - t0 }; }); })
+        .catch(function (e) { return { name: c[0], status: 0, body: String(e.message || e), ms: Date.now() - t0 }; });
+    })).then(function (rs) {
+      el.innerHTML = rs.map(function (r) {
+        var j = null; try { j = JSON.parse(r.body); } catch (e) { /* no es JSON */ }
+        var ok = r.status === 200 && j && !j.error;
+        var cfg = r.status === 200 && j && j.error === 'not_configured';
+        var label = ok ? ['ok', 'Conectado'] : cfg ? ['warn', 'Conectado · falta configurar'] : r.status === 403 ? ['danger', 'Secreto incorrecto (403)'] : r.status === 404 ? ['danger', 'Flujo no activo o ruta errada (404)'] : r.status === 502 ? ['danger', 'n8n inalcanzable'] : ['danger', 'Error ' + r.status];
+        return '<div style="margin-bottom:8px"><b class="mono">' + r.name + '</b> <span class="badge ' + label[0] + '">' + label[1] + '</span> <span class="muted">' + r.ms + ' ms</span>' +
+          '<div class="mono" style="word-break:break-word;color:var(--ink-3)">' + esc(r.body.slice(0, 300)) + '</div></div>';
+      }).join('');
+      audit('ping_n8n', 'n8n', rs.map(function (r) { return { flujo: r.name, status: r.status, ms: r.ms }; }));
+    });
+  }
 
   // Panel
   function p95(list) { if (!list.length) return null; var s = list.slice().sort(function (a, b) { return a - b; }); return s[Math.min(s.length - 1, Math.ceil(0.95 * s.length) - 1)]; }

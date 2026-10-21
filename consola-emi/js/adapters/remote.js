@@ -52,7 +52,7 @@
       }
 
       return once().then(function (value) {
-        if (value && value.error) throw { kind: 'upstream', status: 200, detail: value.error };
+        if (value && value.error) throw { kind: 'upstream', status: 200, detail: value.faltan ? value.error + ': ' + value.faltan.join(', ') : value.error + (value.fuente ? ' (' + value.fuente + ')' : '') };
         if (useCache) cache[key] = { at: Date.now(), value: value };
         onCall({ path: path, ok: true, ms: Date.now() - started, attempts: attempt });
         return value;

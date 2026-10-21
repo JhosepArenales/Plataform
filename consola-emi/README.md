@@ -17,13 +17,17 @@ Consola para probar y administrar a Emi, la asistente virtual de Mesfix. Se publ
 | `js/lib/parsers.js` | CSV, TXT, DOCX, XLSX y exportar/importar con validación |
 | `deploy/credentials.template.json` | Esquema de BD + conexión a n8n (sin secretos) |
 | `n8n/` | Flujos importables de n8n (`workflows/`), generador (`build.js`), configuración y lógica (`src/`), prueba de humo (`smoke.sh`) y guía (`README.md`) |
+| `tools/dev-server.js` | Servidor local que imita el proxy del Deployer para probar contra n8n (no se publica) |
 | `tests/*.test.js` | `node:test`, sin dependencias |
 
 ## Correr localmente
 
 ```bash
-python3 -m http.server 8765    # abre http://localhost:8765 (modo local: datos en el navegador)
-node --test tests/*.test.js     # 138 pruebas
+# Consola + conexión a n8n (modo Remoto), sin publicar. El secreto queda en este proceso, no en el navegador:
+N8N_URL=https://tu-n8n EMI_SECRET=tu-secreto node tools/dev-server.js   # abre http://localhost:8765
+# Solo la consola con datos de prueba (modo Mock):
+python3 -m http.server 8765
+node --test tests/*.test.js     # 140 pruebas
 node n8n/build.js               # regenera los flujos de n8n tras editar n8n/src/
 ```
 

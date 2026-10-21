@@ -269,6 +269,14 @@
     return null;
   }
 
+  // Motivo técnico de una falla remota, para el panel de debug (nunca se muestra al cliente).
+  function errDetail(e) {
+    if (!e) return null;
+    if (e.detail) return String(typeof e.detail === 'object' ? JSON.stringify(e.detail) : e.detail).slice(0, 200);
+    if (e.status) return 'HTTP ' + e.status;
+    return String(e.kind || e.message || e).slice(0, 200);
+  }
+
   function fmtFecha(iso) {
     var p = String(iso || '').slice(0, 10).split('-');
     if (p.length !== 3) return iso || '';
@@ -337,8 +345,8 @@
         out.escalation = { motivo: motivo, ticketId: res.ticketId, created: !!res.created, fueraHorario: !abierto };
         dbg({ tipo: out.debug.tipo || 'escalamiento', escalamiento: out.escalation });
         say(fill(texto, { nombre: cfg.nombre }));
-      }, function () {
-        out.escalation = { motivo: motivo, ticketId: null, created: false, error: true, fueraHorario: !abierto };
+      }, function (e) {
+        out.escalation = { motivo: motivo, ticketId: null, created: false, error: true, detalle: errDetail(e), fueraHorario: !abierto };
         dbg({ tipo: 'escalamiento', escalamiento: out.escalation });
         say('En este momento no pude registrar tu solicitud con un asesor. ' + cfg.mensajes.contactoRespaldo);
       });
@@ -390,10 +398,10 @@
             st.cliente = { estado: 'no_encontrado', ref: maskDoc(doc) };
             openMenu('no_encontrado', 'No encontré un registro con el documento ' + maskDoc(doc) + '.');
         }
-      }).catch(function () {
+      }).catch(function (e) {
         st.pending = null;
         st.cliente = null;
-        dbg({ origen: (ad.client && ad.client.source) || 'remoto', error: 'lookup_cliente' });
+        dbg({ origen: (ad.client && ad.client.source) || 'remoto', error: 'lookup_cliente', detalle: errDetail(e) });
         insufficient('error_consulta');
       });
     }
@@ -452,9 +460,9 @@
         say(lines.join('\n'));
         st.pending = { type: 'op_confirma', op: r.numero, estado: r.estado, empresa: r.empresa, expediente: r.expediente || null };
         dbg({ resultado: r.estado });
-      }).catch(function () {
+      }).catch(function (e) {
         st.pending = null;
-        dbg({ origen: (ad.operation && ad.operation.source) || 'remoto', error: 'lookup_operacion' });
+        dbg({ origen: (ad.operation && ad.operation.source) || 'remoto', error: 'lookup_operacion', detalle: errDetail(e) });
         insufficient('error_consulta');
       });
     }
