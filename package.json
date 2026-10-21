@@ -8,7 +8,8 @@
     "start": "node --no-warnings=ExperimentalWarning server/index.js",
     "dev": "node --no-warnings=ExperimentalWarning --watch server/index.js",
     "test": "node --no-warnings=ExperimentalWarning --test --test-concurrency=1 tests/*.test.js",
-    "build:demo": "node demo/build.mjs"
+    "build:demo": "node demo/build.mjs",
+    "build:supabase": "node supabase/build.mjs"
   },
   "engines": {
     "node": ">=22.13"
@@ -22,5 +23,9 @@
     "multer": "^2.4.0",
     "pdf-parse": "^2.4.5",
     "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@electric-sql/pglite": "^0.5.11",
+    "@supabase/supabase-js": "^2.117.3"
   }
 }

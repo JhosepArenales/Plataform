@@ -6,7 +6,7 @@ import fs from 'node:fs';
 import vm from 'node:vm';
 
 const html = fs.readFileSync(new URL('./index.html', import.meta.url), 'utf8');
-const start = html.indexOf('// ---- demo/mock-backend.js ----');
+const start = html.indexOf('// ---- demo/lib/content.js ----');
 const end = html.indexOf('// ---- public/js/ui.js ----');
 assert.ok(start > 0 && end > start, 'index.html debe contener el backend simulado');
 const backendSource = html.slice(start, end);

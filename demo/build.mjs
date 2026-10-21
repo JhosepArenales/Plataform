@@ -25,6 +25,7 @@ function unmodule(src, renames = {}) {
 }
 
 const scripts = [
+  ['demo/lib/content.js', {}],
   ['demo/mock-backend.js', {}],
   ['public/js/ui.js', { 'function videoEmbed(': 'function videoEmbedReal(' }],
   ['public/js/api.js', { 'function uploadWithProgress(': 'function uploadWithProgressReal(' }],

@@ -50,6 +50,19 @@ docker run -p 3000:3000 -v academia-data:/data -e ANTHROPIC_API_KEY=... academia
 
 `npm run build:demo` genera `demo/dist/academia-demo.html`: la misma interfaz con un backend simulado en el navegador (datos de ejemplo, lectura real de PDF/Word/Excel/PowerPoint, juego con participantes simulados). Publicada dentro de Claude usa la IA de la cuenta de quien la abre.
 
+## Versión sin servidor con Supabase (Netlify + Supabase, plan gratis)
+
+Datos compartidos reales sin mantener un servidor: la interfaz se publica como un solo `index.html` en Netlify y los datos viven en Supabase.
+
+1. Supabase → **SQL Editor** → pega `supabase/schema.sql` completo → **Run** (se puede repetir sin perder datos).
+2. Supabase → **Authentication → Sign In / Providers → Email** → desactiva **Confirm email**.
+3. `npm run build:supabase` → arrastra `supabase/dist/` a [app.netlify.com/drop](https://app.netlify.com/drop).
+4. La **primera cuenta** que se crea queda como administradora. Solo se aceptan correos `@plataform.com` (`app_config.allowed_domain`).
+
+Seguridad: el navegador no tiene acceso a las tablas; todo pasa por funciones `app_*` que validan permisos, corrigen los quizzes y asignan los puntos en la base de datos. La URL y la clave publicable están en `supabase/config.js`.
+
+Diferencias con la versión con servidor: videos por link (YouTube no listado, Vimeo o Drive), IA en modo básico, sin lectura de URLs, y el juego en vivo llega en la siguiente etapa.
+
 ## Arquitectura
 
 ```
