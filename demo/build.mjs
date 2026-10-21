@@ -74,4 +74,10 @@ ${html.replace('<!--LIBS-->\n', '').replace('</style>', '</style>\n</head>\n<bod
 </html>
 `);
 fs.copyFileSync(path.join(ROOT, 'demo', 'academia.test.js'), path.join(deployDir, 'academia.test.js'));
+
+// Paquete para hosting estático (Netlify, etc.): igual al del Deployer, pero con el
+// lector de PDF, porque ahí sí se pueden cargar scripts externos.
+const staticDir = path.join(ROOT, 'demo', 'dist', 'netlify');
+fs.mkdirSync(staticDir, { recursive: true });
+fs.writeFileSync(path.join(staticDir, 'index.html'), fs.readFileSync(path.join(deployDir, 'index.html'), 'utf8').replace('</head>', `${LIBS}\n</head>`));
 console.log(`Paquete para el Deployer: ${deployDir}`);
