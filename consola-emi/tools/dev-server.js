@@ -65,9 +65,11 @@ function createServer(opts) {
 module.exports = { createServer };
 
 if (require.main === module) {
+  if (typeof fetch !== 'function') { console.error('Necesitas Node.js 18 o superior (https://nodejs.org).'); process.exit(1); }
   const port = +process.env.PORT || 8765;
   const n8nUrl = process.env.N8N_URL, secret = process.env.EMI_SECRET;
   if (!n8nUrl || !secret) console.warn('⚠  Falta N8N_URL o EMI_SECRET: el modo Remoto responderá error.');
   createServer({ root: path.join(__dirname, '..'), n8nUrl, secret, log: (m) => console.log(new Date().toLocaleTimeString('es-CO'), m) })
+    .on('error', (e) => { console.error(e.code === 'EADDRINUSE' ? `El puerto ${port} ya está en uso: cierra la otra ventana de la consola.` : e.message); process.exit(1); })
     .listen(port, '127.0.0.1', () => console.log(`Consola de Emi en http://localhost:${port}  ·  n8n: ${n8nUrl || '(sin configurar)'}`));
 }
