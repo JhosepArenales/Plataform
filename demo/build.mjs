@@ -12,9 +12,6 @@ const read = (p) => fs.readFileSync(path.join(ROOT, p), 'utf8');
 const CDN = [
   'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js',
   'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js',
-  'https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js',
-  'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js',
-  'https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js',
 ];
 
 // Convierte un módulo ES en código de script: sin import/export.
@@ -46,8 +43,7 @@ const html = `<title>Demo Academia Plataform</title>
 ${read('public/css/app.css')}
 ${read('demo/demo.css')}
 </style>
-${CDN.map((u) => `<script src="${u}"></script>`).join('\n')}
-<script>if (window.pdfjsLib) window.pdfjsLib.GlobalWorkerOptions.workerSrc = '${CDN[1]}';</script>
+<!--LIBS-->
 <header id="nav" class="topbar"></header>
 <main id="main" tabindex="-1"></main>
 <script>
@@ -58,5 +54,24 @@ ${scripts}
 `;
 
 fs.mkdirSync(path.dirname(out), { recursive: true });
-fs.writeFileSync(out, html);
+const LIBS = `<script src="${CDN[0]}"></script>
+<script>if (window.pdfjsLib) window.pdfjsLib.GlobalWorkerOptions.workerSrc = '${CDN[1]}';</script>`;
+fs.writeFileSync(out, html.replace('<!--LIBS-->\n', `${LIBS}\n`));
 console.log(`Demo generada: ${out} (${Math.round(html.length / 1024)} KB)`);
+
+// Paquete para el Deployer de Plataform: documento HTML completo + sus pruebas, sin
+// scripts externos (el Deployer no los permite); los PDF piden pegar el texto.
+const deployDir = path.join(ROOT, 'demo', 'dist', 'deploy');
+fs.mkdirSync(deployDir, { recursive: true });
+fs.writeFileSync(path.join(deployDir, 'index.html'), `<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#7B00CD">
+${html.replace('<!--LIBS-->\n', '').replace('</style>', '</style>\n</head>\n<body>')}
+</body>
+</html>
+`);
+fs.copyFileSync(path.join(ROOT, 'demo', 'academia.test.js'), path.join(deployDir, 'academia.test.js'));
+console.log(`Paquete para el Deployer: ${deployDir}`);

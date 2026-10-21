@@ -285,7 +285,7 @@ async function extractFile(file) {
   const buf = await file.arrayBuffer();
   let text;
   if (kind === 'pdf') {
-    if (!window.pdfjsLib) throw httpError(503, 'El lector de PDF no cargó. Revisa tu conexión y recarga la página.');
+    if (!window.pdfjsLib) throw httpError(415, 'En esta versión publicada los PDF no se leen automáticamente. Abre el PDF, copia el texto y usa "Agregar texto", o súbelo como Word.');
     const doc = await window.pdfjsLib.getDocument({ data: new Uint8Array(buf), isEvalSupported: false }).promise;
     const pages = [];
     for (let i = 1; i <= doc.numPages; i++) {
@@ -293,23 +293,11 @@ async function extractFile(file) {
       pages.push(content.items.map((it) => it.str + (it.hasEOL ? '\n' : ' ')).join(''));
     }
     text = pages.join('\n\n');
-  } else if (kind === 'word') {
-    if (!window.mammoth) throw httpError(503, 'El lector de Word no cargó. Recarga la página.');
-    text = (await window.mammoth.extractRawText({ arrayBuffer: buf })).value;
-  } else if (kind === 'excel') {
-    if (!window.XLSX) throw httpError(503, 'El lector de Excel no cargó. Recarga la página.');
-    const wb = window.XLSX.read(buf, { type: 'array' });
-    text = wb.SheetNames.map((n) => `## Hoja: ${n}\n${window.XLSX.utils.sheet_to_csv(wb.Sheets[n], { FS: ' | ', blankrows: false })}`).join('\n\n');
-  } else if (kind === 'powerpoint') {
-    if (!window.JSZip) throw httpError(503, 'El lector de PowerPoint no cargó. Recarga la página.');
-    const zip = await window.JSZip.loadAsync(buf);
-    const slides = Object.keys(zip.files).filter((f) => /^ppt\/slides\/slide\d+\.xml$/.test(f)).sort((a, b) => Number(a.match(/\d+/)[0]) - Number(b.match(/\d+/)[0]));
-    const parts = [];
-    for (const [i, f] of slides.entries()) {
-      const xml = await zip.file(f).async('string');
-      parts.push(`## Diapositiva ${i + 1}\n${[...xml.matchAll(/<a:t>([^<]*)<\/a:t>/g)].map((m) => decodeEntities(m[1])).join(' ')}`);
-    }
-    text = parts.join('\n\n');
+  } else if (ext === '.xls') {
+    throw httpError(415, 'El formato .xls antiguo no se puede leer. Guárdalo como .xlsx o .csv y vuelve a subirlo.');
+  } else if (kind === 'word' || kind === 'excel' || kind === 'powerpoint') {
+    const zip = await readZip(buf).catch(() => { throw httpError(422, `"${file.name}" no parece un archivo de Office válido.`); });
+    text = kind === 'word' ? docxText(zip) : kind === 'excel' ? xlsxText(zip) : pptxText(zip);
   } else {
     text = new TextDecoder().decode(buf);
     if (kind === 'web') text = htmlToText(text);
@@ -317,6 +305,62 @@ async function extractFile(file) {
   return finishExtraction(kind, file.name, text);
 }
 
+// Office (docx/xlsx/pptx) son ZIP con XML: se leen con la descompresión nativa del
+// navegador, sin librerías externas.
+async function readZip(buf) {
+  const bytes = new Uint8Array(buf);
+  const dv = new DataView(buf);
+  let eocd = -1;
+  for (let i = bytes.length - 22; i >= Math.max(0, bytes.length - 65557); i--) if (dv.getUint32(i, true) === 0x06054b50) { eocd = i; break; }
+  if (eocd < 0) throw new Error('zip');
+  const count = dv.getUint16(eocd + 10, true);
+  let p = dv.getUint32(eocd + 16, true);
+  const files = {};
+  const utf8 = new TextDecoder();
+  for (let n = 0; n < count; n++) {
+    if (dv.getUint32(p, true) !== 0x02014b50) throw new Error('zip');
+    const method = dv.getUint16(p + 10, true);
+    const size = dv.getUint32(p + 20, true);
+    const nameLen = dv.getUint16(p + 28, true);
+    const local = dv.getUint32(p + 42, true);
+    const name = utf8.decode(bytes.subarray(p + 46, p + 46 + nameLen));
+    p += 46 + nameLen + dv.getUint16(p + 30, true) + dv.getUint16(p + 32, true);
+    if (!/\.(xml|rels)$/.test(name)) continue;
+    const start = local + 30 + dv.getUint16(local + 26, true) + dv.getUint16(local + 28, true);
+    const data = bytes.subarray(start, start + size);
+    files[name] = method === 0 ? data : method === 8 ? new Uint8Array(await new Response(new Blob([data]).stream().pipeThrough(new DecompressionStream('deflate-raw'))).arrayBuffer()) : null;
+  }
+  return { read: (name) => (files[name] ? utf8.decode(files[name]) : null), names: Object.keys(files) };
+}
+const xmlTexts = (xml, tag) => [...xml.matchAll(new RegExp(`<${tag}(?:\\s[^>]*)?>([^<]*)</${tag}>`, 'g'))].map((m) => decodeEntities(m[1]));
+const byNumber = (a, b) => Number(a.match(/(\d+)\.xml$/)[1]) - Number(b.match(/(\d+)\.xml$/)[1]);
+function docxText(zip) {
+  const xml = zip.read('word/document.xml');
+  if (!xml) throw httpError(422, 'El documento de Word no tiene contenido legible.');
+  return xml.split(/<\/w:p>/).map((par) => xmlTexts(par, 'w:t').join('')).join('\n');
+}
+function pptxText(zip) {
+  return zip.names.filter((f) => /^ppt\/slides\/slide\d+\.xml$/.test(f)).sort(byNumber)
+    .map((f, i) => `## Diapositiva ${i + 1}\n${xmlTexts(zip.read(f), 'a:t').join(' ')}`).join('\n\n');
+}
+function xlsxText(zip) {
+  const shared = (zip.read('xl/sharedStrings.xml') ?? '').split(/<\/si>/).slice(0, -1).map((si) => xmlTexts(si, 't').join(''));
+  const rels = Object.fromEntries([...(zip.read('xl/_rels/workbook.xml.rels') ?? '').matchAll(/<Relationship\b[^>]*>/g)]
+    .map((m) => [m[0].match(/Id="([^"]+)"/)?.[1], m[0].match(/Target="([^"]+)"/)?.[1]]));
+  const sheets = [...(zip.read('xl/workbook.xml') ?? '').matchAll(/<sheet\b[^>]*>/g)].map((m, i) => ({
+    name: decodeEntities(m[0].match(/name="([^"]*)"/)?.[1] ?? `Hoja ${i + 1}`),
+    path: `xl/${(rels[m[0].match(/r:id="([^"]+)"/)?.[1]] ?? `worksheets/sheet${i + 1}.xml`).replace(/^\/?xl\//, '')}`,
+  }));
+  return sheets.map(({ name, path }) => {
+    const rows = (zip.read(path) ?? '').split(/<\/row>/).map((row) => [...row.matchAll(/<c\b([^>]*?)(?:\/>|>([\s\S]*?)<\/c>)/g)].map(([, attrs, body = '']) => {
+      const t = attrs.match(/\bt="([^"]+)"/)?.[1];
+      if (t === 'inlineStr') return xmlTexts(body, 't').join('');
+      const v = body.match(/<v>([^<]*)<\/v>/)?.[1] ?? '';
+      return t === 's' ? shared[Number(v)] ?? '' : decodeEntities(v);
+    }).filter(Boolean).join(' | ')).filter(Boolean);
+    return `## Hoja: ${name}\n${rows.join('\n')}`;
+  }).join('\n\n');
+}
 function finishExtraction(kind, name, raw) {
   const text = raw.replace(/\r/g, '').replace(/[ \t]+/g, ' ').replace(/\n\s*\n\s*\n+/g, '\n\n').trim();
   if (text.length < 40) throw httpError(422, `"${name}" no tiene texto suficiente. Si es un PDF escaneado, conviértelo a texto (OCR) primero.`);
