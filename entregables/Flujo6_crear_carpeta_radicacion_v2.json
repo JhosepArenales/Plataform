@@ -1,0 +1,523 @@
+{
+  "name": "Flujo 6 · Crear carpeta de radicación (Drive)",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "Crear_carpeta_radicacion",
+        "responseMode": "responseNode",
+        "options": {
+          "allowedOrigins": "*"
+        }
+      },
+      "id": "3c5b1c0a-6da0-43f0-95f3-40f0919f593d",
+      "name": "Webhook Crear_carpeta_radicacion",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        300
+      ],
+      "webhookId": "58d3206c-6f32-4aba-945f-738e50126cba"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Datos que manda el panel de radicación comercial al confirmar.\nconst b = $input.first().json.body || {};\nconst CONFIG = {\n  // Carpeta PROCESAMIENTO COMERCIAL (Operaciones). La cuenta de la credencial de Drive debe poder editarla.\n  CARPETA_RAIZ_ID: '1V7lauqGk3uUFkCi6Q9NWu-MeZiah5gNS'\n};\nconst limpio = (s) => String(s || '').replace(/[\\\\/:*?\"<>|]+/g, ' ').replace(/\\s+/g, ' ').trim();\nconst cliente = b.cliente || {};\nconst nombreCliente = limpio(cliente.razonSocial) || ('NIT ' + String(cliente.nit || '').replace(/\\D/g, ''));\nif (!nombreCliente || nombreCliente === 'NIT ') throw new Error('La radicación no trae el cliente.');\n// Diferenciador: fecha y hora de creación (hora Colombia), para que Karen identifique la carpeta y luego le ponga el número.\nconst ahora = new Date().toLocaleString('sv-SE', { timeZone: 'America/Bogota' }); // \"2026-10-20 13:45:07\"\nconst nombreCarpeta = nombreCliente + ' - ' + ahora.slice(0, 10) + ' ' + ahora.slice(11, 13) + 'h' + ahora.slice(14, 16);\nconst pagadores = (Array.isArray(b.pagadores) ? b.pagadores : []).filter(p => p && (p.razonSocial || p.nit));\n// Mapeo (estructura de Producto, correo de Álvaro 27-oct): las facturas seleccionadas se leen completas de opportunity_mapping.\nconst m = b.mapeo || {};\nconst soloNit = (v) => String(v || '').replace(/\\D/g, '');\nconst facturasSel = (Array.isArray(m.facturas) ? m.facturas : []).map(f => ({\n  cufe: String(f.cufe || '').replace(/[^0-9A-Za-z]/g, ''),\n  numeroFactura: String(f.numeroFactura || '').replace(/[^0-9A-Za-z-]/g, ''),\n  nitPagador: soloNit(f.nitPagador)\n})).filter(f => f.cufe || f.numeroFactura);\nconst nitEmisor = soloNit(m.nitEmisor || cliente.nit);\nconst mapeoSel = facturasSel.length && nitEmisor ? { nitEmisor, fechaPago: String(m.fechaAproximadaPago || ''), facturas: facturasSel } : null;\nconst lista = (vals) => vals.length ? vals.map(v => \"'\" + v + \"'\").join(',') : \"''\";\nconst sql = mapeoSel\n  ? \"SELECT * FROM `inlaid-stack-375114.analytics_data_products.opportunity_mapping` WHERE CAST(nit_emisor AS STRING) = '\" + nitEmisor +\n    \"' AND (cufe IN (\" + lista(facturasSel.map(f => f.cufe).filter(Boolean)) + \") OR numero_factura IN (\" + lista(facturasSel.map(f => f.numeroFactura).filter(Boolean)) + \"))\"\n  : \"SELECT 1 AS sin_mapeo LIMIT 0\";\nreturn [{ json: {\n  config: CONFIG,\n  nombreCliente,\n  nombreCarpeta,\n  // Regla de Karen: con más de un pagador se crea una subcarpeta por pagador; con uno solo, todo va en la carpeta del cliente.\n  pagadores: pagadores.map(p => ({ nit: String(p.nit || '').replace(/\\D/g, ''), nombre: limpio(p.razonSocial) || ('NIT ' + p.nit) })),\n  cotizacion: b.cotizacion && b.cotizacion.base64 ? b.cotizacion : null,\n  mapeo: b.mapeo && b.mapeo.csv ? b.mapeo : null,\n  mapeoSel,\n  sql\n} }];"
+      },
+      "id": "52f817ba-5dda-42d8-af43-7b23fd62db71",
+      "name": "Normalizar solicitud",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        220,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "authentication": "serviceAccount",
+        "operation": "executeQuery",
+        "projectId": {
+          "__rl": true,
+          "value": "inlaid-stack-375114",
+          "mode": "id"
+        },
+        "sqlQuery": "={{ $json.sql }}",
+        "options": {}
+      },
+      "id": "73178b8a-ed31-4af8-aee6-acd974760bf1",
+      "name": "BigQuery: facturas del mapeo",
+      "type": "n8n-nodes-base.googleBigQuery",
+      "typeVersion": 2.1,
+      "position": [
+        440,
+        300
+      ],
+      "credentials": {
+        "googleApi": {
+          "name": "Bigquery"
+        }
+      },
+      "alwaysOutputData": true,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Mapeo con la estructura validada por Producto (tranformacion_columnas_mapeo.js de Álvaro, 27-oct-2026).\n// Diccionario: columna de ORIGEN (opportunity_mapping) -> columna de DESTINO (hoja mapeo). Para cambiar un nombre, solo se edita aquí.\nconst MAPA = {\n  emisor: 'NOMBRE EMISOR',\n  nit_emisor: 'NIT EMISOR',\n  pagador: 'NOMBRE PAGADOR',\n  nit_pagador: 'NIT PAGADOR',\n  numero_factura: 'NUMERO FACTURA',\n  fecha_expedicion: 'FECHA EXPEDICIÓN',\n  fecha_radicacion: 'FECHA DE RADICACION',\n  fecha_vencimiento: 'FECHA VENCIMIENTO',\n  fecha_aproximada_de_pago: 'FECHA APROXIMADA DE PAGO',\n  forma_pago: 'FORMA PAGO',\n  vencimiento_pago: 'VENCIMIENTO DE PAGO',\n  valor_bruto: 'VALOR BRUTO',\n  descuento: 'DESCUENTO',\n  total_iva: 'TOTAL IVA',\n  total_rete_iva: 'TOTAL RETE IVA',\n  tota_rete_fuente: 'TOTAL RETE FUENTE', // el origen trae el typo \"tota_\"\n  total_rete_ica: 'TOTAL RETE ICA',\n  valor_neto: 'VALOR NETO',\n  valor_neto_calculado: 'VALOR NETO CALCULADO',\n  cufe: 'CUFE',\n  prefijo: 'PREFIJO',\n  numero_factura_sin_prefijo: 'NUMERO DE FACTURA SIN PREFIJO',\n};\n// Columnas que NO se mapean (se descartan): estado_cupo_cliente, disponible_cupo\nconst NUMERICAS = ['valor_bruto', 'descuento', 'total_iva', 'total_rete_iva', 'tota_rete_fuente', 'total_rete_ica', 'valor_neto', 'valor_neto_calculado'];\n\n// Excel (.xlsx) sin librerías: zip sin compresión con una hoja \"mapeo\".\nfunction crc32(buf) {\n  let c, crc = 0xFFFFFFFF;\n  for (let i = 0; i < buf.length; i++) { c = (crc ^ buf[i]) & 0xFF; for (let k = 0; k < 8; k++) c = c & 1 ? 0xEDB88320 ^ (c >>> 1) : c >>> 1; crc = (crc >>> 8) ^ c; }\n  return (crc ^ 0xFFFFFFFF) >>> 0;\n}\nfunction zip(archivos) {\n  const locales = [], centrales = []; let offset = 0;\n  for (const [nombre, texto] of archivos) {\n    const datos = Buffer.from(texto, 'utf8'), n = Buffer.from(nombre, 'utf8'), crc = crc32(datos);\n    const h = Buffer.alloc(30); h.writeUInt32LE(0x04034b50, 0); h.writeUInt16LE(20, 4); h.writeUInt16LE(0x0800, 6); h.writeUInt16LE(0, 8);\n    h.writeUInt32LE(0, 10); h.writeUInt32LE(crc, 14); h.writeUInt32LE(datos.length, 18); h.writeUInt32LE(datos.length, 22); h.writeUInt16LE(n.length, 26); h.writeUInt16LE(0, 28);\n    const c = Buffer.alloc(46); c.writeUInt32LE(0x02014b50, 0); c.writeUInt16LE(20, 4); c.writeUInt16LE(20, 6); c.writeUInt16LE(0x0800, 8); c.writeUInt16LE(0, 10);\n    c.writeUInt32LE(0, 12); c.writeUInt32LE(crc, 16); c.writeUInt32LE(datos.length, 20); c.writeUInt32LE(datos.length, 24); c.writeUInt16LE(n.length, 28);\n    c.writeUInt16LE(0, 30); c.writeUInt16LE(0, 32); c.writeUInt16LE(0, 34); c.writeUInt16LE(0, 36); c.writeUInt32LE(0, 38); c.writeUInt32LE(offset, 42);\n    locales.push(h, n, datos); centrales.push(c, n); offset += 30 + n.length + datos.length;\n  }\n  const dir = Buffer.concat(centrales), fin = Buffer.alloc(22);\n  fin.writeUInt32LE(0x06054b50, 0); fin.writeUInt16LE(archivos.length, 8); fin.writeUInt16LE(archivos.length, 10); fin.writeUInt32LE(dir.length, 12); fin.writeUInt32LE(offset, 16);\n  return Buffer.concat([...locales, dir, fin]);\n}\nfunction xlsx(encabezados, filas) {\n  const esc = (t) => String(t).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/[\\u0000-\\u0008\\u000B\\u000C\\u000E-\\u001F]/g, '');\n  const col = (i) => { let s = ''; i++; while (i) { const r = (i - 1) % 26; s = String.fromCharCode(65 + r) + s; i = Math.floor((i - 1) / 26); } return s; };\n  const celda = (v, r, c, s) => { const ref = col(c) + r;\n    if (typeof v === 'number' && isFinite(v)) return '<c r=\"' + ref + '\"' + (s ? ' s=\"1\"' : '') + '><v>' + v + '</v></c>';\n    return '<c r=\"' + ref + '\" t=\"inlineStr\"' + (s ? ' s=\"1\"' : '') + '><is><t xml:space=\"preserve\">' + esc(v) + '</t></is></c>'; };\n  const filasXml = [encabezados, ...filas].map((f, r) => '<row r=\"' + (r + 1) + '\">' + f.map((v, c) => celda(v, r + 1, c, r === 0)).join('') + '</row>').join('');\n  return zip([\n    ['[Content_Types].xml', '<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?><Types xmlns=\"http://schemas.openxmlformats.org/package/2006/content-types\"><Default Extension=\"rels\" ContentType=\"application/vnd.openxmlformats-package.relationships+xml\"/><Default Extension=\"xml\" ContentType=\"application/xml\"/><Override PartName=\"/xl/workbook.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml\"/><Override PartName=\"/xl/worksheets/sheet1.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml\"/><Override PartName=\"/xl/styles.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml\"/></Types>'],\n    ['_rels/.rels', '<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?><Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\"><Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument\" Target=\"xl/workbook.xml\"/></Relationships>'],\n    ['xl/workbook.xml', '<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?><workbook xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\" xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\"><sheets><sheet name=\"mapeo\" sheetId=\"1\" r:id=\"rId1\"/></sheets></workbook>'],\n    ['xl/_rels/workbook.xml.rels', '<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?><Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\"><Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet\" Target=\"worksheets/sheet1.xml\"/><Relationship Id=\"rId2\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles\" Target=\"styles.xml\"/></Relationships>'],\n    ['xl/styles.xml', '<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?><styleSheet xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\"><fonts count=\"2\"><font><sz val=\"11\"/><name val=\"Calibri\"/></font><font><b/><sz val=\"11\"/><name val=\"Calibri\"/></font></fonts><fills count=\"2\"><fill><patternFill patternType=\"none\"/></fill><fill><patternFill patternType=\"gray125\"/></fill></fills><borders count=\"1\"><border/></borders><cellStyleXfs count=\"1\"><xf/></cellStyleXfs><cellXfs count=\"2\"><xf fontId=\"0\" xfId=\"0\"/><xf fontId=\"1\" xfId=\"0\" applyFont=\"1\"/></cellXfs><cellStyles count=\"1\"><cellStyle name=\"Normal\" xfId=\"0\" builtinId=\"0\"/></cellStyles></styleSheet>'],\n    ['xl/worksheets/sheet1.xml', '<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?><worksheet xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\"><sheetData>' + filasXml + '</sheetData></worksheet>']\n  ]);\n}\n\nconst n = $('Normalizar solicitud').first().json;\nconst sel = n.mapeoSel;\nif (!sel) return [{ json: { xlsx: null, aviso: 'el panel no envió las facturas seleccionadas' } }];\ntry {\n  const salida = $input.all().map(i => i.json || {});\n  const errBQ = salida.find(j => j.error);\n  const filasBQ = salida.filter(j => !j.error && (j.cufe || j.numero_factura));\n  const norm = (s) => String(s == null ? '' : s).trim().toLowerCase();\n  const elegidas = [], faltan = [];\n  sel.facturas.forEach(f => {\n    const r = (f.cufe && filasBQ.find(x => norm(x.cufe) === norm(f.cufe)))\n      || filasBQ.find(x => norm(x.numero_factura) === norm(f.numeroFactura) && (!f.nitPagador || String(x.nit_pagador || '').replace(/\\D/g, '') === f.nitPagador));\n    if (r && !elegidas.includes(r)) elegidas.push(r); else if (!r) faltan.push(f.numeroFactura || f.cufe);\n  });\n  if (!elegidas.length) {\n    const msg = errBQ ? 'BigQuery respondió con error: ' + String(errBQ.error.message || errBQ.error.description || JSON.stringify(errBQ.error)).slice(0, 200)\n                      : 'BigQuery no devolvió las facturas seleccionadas';\n    return [{ json: { xlsx: null, aviso: msg } }];\n  }\n  // Misma transformación del script de Álvaro; la fecha aproximada de pago viene del radicador (formato YYYY.MM.DD).\n  const filas = elegidas.map(item => Object.keys(MAPA).map(origen => {\n    let valor = origen === 'fecha_aproximada_de_pago' ? sel.fechaPago : item[origen];\n    if (valor && typeof valor === 'object' && 'value' in valor) valor = valor.value;\n    if (typeof valor === 'string') valor = valor.trim();\n    if (NUMERICAS.includes(origen) && typeof valor === 'string' && /^-?\\d+(\\.\\d+)?$/.test(valor)) valor = Number(valor);\n    return valor ?? '';\n  }));\n  const fecha = new Date().toLocaleString('sv-SE', { timeZone: 'America/Bogota' }).slice(0, 10);\n  const nombre = 'Mapeo ' + n.nombreCliente + ' ' + fecha + '.xlsx';\n  return [{ json: {\n    xlsx: { nombre, base64: xlsx(Object.values(MAPA), filas).toString('base64') },\n    filas: filas.length,\n    aviso: faltan.length ? 'no se encontraron en opportunity_mapping: ' + faltan.join(', ') : null\n  } }];\n} catch (e) {\n  return [{ json: { xlsx: null, aviso: 'no se pudo armar el Excel del mapeo (' + e.message + ')' } }];\n}"
+      },
+      "id": "59d958e7-0238-4784-b74e-9121f8328f3e",
+      "name": "Armar mapeo",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        660,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://www.googleapis.com/drive/v3/files",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleDriveOAuth2Api",
+        "options": {},
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "supportsAllDrives",
+              "value": "true"
+            },
+            {
+              "name": "fields",
+              "value": "id,name,webViewLink,mimeType"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ name: $('Normalizar solicitud').first().json.nombreCarpeta, mimeType: 'application/vnd.google-apps.folder', parents: [$('Normalizar solicitud').first().json.config.CARPETA_RAIZ_ID] }) }}"
+      },
+      "id": "f9c9854c-5580-47af-a275-f05f7ee991f9",
+      "name": "Drive: crear carpeta del cliente",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        880,
+        300
+      ],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const n = $('Normalizar solicitud').first().json;\nconst carpeta = $input.first().json;\nif (!carpeta.id) {\n  return [{ json: { hayError: true, error: 'No se pudo crear la carpeta del cliente: ' + JSON.stringify(carpeta.error || carpeta).slice(0, 300) } }];\n}\nif (n.pagadores.length <= 1) return [{ json: { sinSubcarpetas: true } }];\nreturn n.pagadores.map(p => ({ json: { crearSubcarpeta: true, nombre: p.nombre, padre: carpeta.id } }));"
+      },
+      "id": "94fc39b0-9ea1-4450-8024-f25c21a91db5",
+      "name": "Preparar subcarpetas",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1100,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "typeValidation": "loose",
+                  "version": 2
+                },
+                "combinator": "and",
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.hayError === true }}",
+                    "rightValue": true,
+                    "operator": {
+                      "type": "boolean",
+                      "operation": "true",
+                      "singleValue": true
+                    }
+                  }
+                ]
+              },
+              "renameOutput": true,
+              "outputKey": "Error"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "typeValidation": "loose",
+                  "version": 2
+                },
+                "combinator": "and",
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.crearSubcarpeta === true }}",
+                    "rightValue": true,
+                    "operator": {
+                      "type": "boolean",
+                      "operation": "true",
+                      "singleValue": true
+                    }
+                  }
+                ]
+              },
+              "renameOutput": true,
+              "outputKey": "Varios pagadores"
+            }
+          ]
+        },
+        "options": {
+          "fallbackOutput": "extra",
+          "renameFallbackOutput": "Un pagador"
+        }
+      },
+      "id": "5b796030-c39a-4520-9f58-26c1ee4e3e29",
+      "name": "¿Uno o varios pagadores?",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.2,
+      "position": [
+        1320,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://www.googleapis.com/drive/v3/files",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleDriveOAuth2Api",
+        "options": {},
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "supportsAllDrives",
+              "value": "true"
+            },
+            {
+              "name": "fields",
+              "value": "id,name,webViewLink,mimeType"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ name: $json.nombre, mimeType: \"application/vnd.google-apps.folder\", parents: [$json.padre] }) }}"
+      },
+      "id": "1088a74c-3b1b-45b3-80b7-b193b2af63c4",
+      "name": "Drive: crear subcarpeta del pagador",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1540,
+        200
+      ],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Llega por la rama de subcarpetas (una por pagador) o directo si hay un solo pagador.\nconst n = $('Normalizar solicitud').first().json;\nconst carpeta = $('Drive: crear carpeta del cliente').first().json;\nconst items = [];\nconst subcarpetas = $input.all().map(i => i.json).filter(j => j.id && j.mimeType === 'application/vnd.google-apps.folder');\nconst errores = $input.all().map(i => i.json).filter(j => j.error).map(j => 'Subcarpeta: ' + JSON.stringify(j.error).slice(0, 200));\nconst adjuntar = async (nombre, buffer, mime) => {\n  const binary = await this.helpers.prepareBinaryData(buffer, nombre, mime);\n  items.push({ json: { nombre, padre: carpeta.id }, binary: { data: binary } });\n};\nif (n.cotizacion) await adjuntar(n.cotizacion.nombre || 'Cotizacion.pdf', Buffer.from(n.cotizacion.base64, 'base64'), 'application/pdf');\nelse errores.push('El panel no envió el PDF de la cotización.');\n// Mapeo de facturas (temporal, reunión 26-oct): Excel con la estructura de Producto.\n// Si BigQuery no lo pudo armar, se guarda el CSV básico del panel para no perder la radicación.\nconst mx = $('Armar mapeo').first().json;\nif (mx.xlsx) {\n  await adjuntar(mx.xlsx.nombre, Buffer.from(mx.xlsx.base64, 'base64'), 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');\n  if (mx.aviso) errores.push('Mapeo: ' + mx.aviso + '.');\n} else {\n  errores.push('Mapeo: ' + (mx.aviso || 'sin datos') + '. Se guardó el mapeo básico del panel (CSV).');\n  if (n.mapeo) await adjuntar(n.mapeo.nombre || 'Mapeo facturas.csv', Buffer.from(n.mapeo.csv, 'utf8'), 'text/csv');\n}\n// Se guardan subcarpetas y errores para armar la respuesta al final.\nitems.forEach(i => { i.json.subcarpetas = subcarpetas.map(s => ({ nombre: s.name, id: s.id, url: s.webViewLink })); i.json.errores = errores; });\nif (!items.length) return [{ json: { sinArchivos: true, subcarpetas: subcarpetas.map(s => ({ nombre: s.name, id: s.id, url: s.webViewLink })), errores } }];\nreturn items;"
+      },
+      "id": "0513214f-fbbe-43ca-ab6e-b7d0cb08ac13",
+      "name": "Preparar archivos",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1760,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://www.googleapis.com/upload/drive/v3/files",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleDriveOAuth2Api",
+        "options": {},
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "uploadType",
+              "value": "media"
+            },
+            {
+              "name": "supportsAllDrives",
+              "value": "true"
+            },
+            {
+              "name": "fields",
+              "value": "id,parents"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "binaryData",
+        "inputDataFieldName": "data"
+      },
+      "id": "649a9227-f8a9-44f7-9603-3716725d2ca4",
+      "name": "Drive: subir archivo",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1980,
+        300
+      ],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "={{ 'https://www.googleapis.com/drive/v3/files/' + $json.id }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleDriveOAuth2Api",
+        "options": {},
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "addParents",
+              "value": "={{ $('Preparar archivos').item.json.padre }}"
+            },
+            {
+              "name": "removeParents",
+              "value": "={{ ($json.parents || []).join(',') }}"
+            },
+            {
+              "name": "supportsAllDrives",
+              "value": "true"
+            },
+            {
+              "name": "fields",
+              "value": "id,name,webViewLink"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ name: $('Preparar archivos').item.json.nombre }) }}"
+      },
+      "id": "d473798e-b746-4aca-968b-8de5369a6da4",
+      "name": "Drive: ubicar y nombrar archivo",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2200,
+        300
+      ],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const carpeta = $('Drive: crear carpeta del cliente').first().json;\nconst previo = $('Preparar archivos').all().map(i => i.json);\nconst subidos = $input.all().map(i => i.json);\nconst errores = [...new Set(previo.flatMap(p => p.errores || []))];\nsubidos.forEach((s, k) => { if (!s.id) errores.push('No se pudo guardar ' + ((previo[k] || {}).nombre || 'un archivo') + ': ' + JSON.stringify(s.error || s).slice(0, 200)); });\nreturn [{ json: {\n  ok: true,\n  carpeta: { id: carpeta.id, nombre: carpeta.name, url: carpeta.webViewLink },\n  subcarpetas: (previo[0] || {}).subcarpetas || [],\n  archivos: subidos.filter(s => s.id).map(s => ({ nombre: s.name, url: s.webViewLink })),\n  errores\n} }];"
+      },
+      "id": "9c831e6e-0757-49aa-b260-8db3812c0091",
+      "name": "Armar respuesta",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2420,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const e = $input.first().json;\nreturn [{ json: { ok: false, message: e.error || 'No se pudo crear la carpeta del cliente.' } }];"
+      },
+      "id": "b8950d96-b0a3-4d63-a3a0-5e6952e77237",
+      "name": "Armar error",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1540,
+        480
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify($json) }}",
+        "options": {}
+      },
+      "id": "25c4abb5-ec58-498a-9be0-2ac12c2e719d",
+      "name": "Responder al panel",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        2640,
+        300
+      ]
+    }
+  ],
+  "connections": {
+    "Webhook Crear_carpeta_radicacion": {
+      "main": [
+        [
+          {
+            "node": "Normalizar solicitud",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalizar solicitud": {
+      "main": [
+        [
+          {
+            "node": "BigQuery: facturas del mapeo",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "BigQuery: facturas del mapeo": {
+      "main": [
+        [
+          {
+            "node": "Armar mapeo",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Armar mapeo": {
+      "main": [
+        [
+          {
+            "node": "Drive: crear carpeta del cliente",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Drive: crear carpeta del cliente": {
+      "main": [
+        [
+          {
+            "node": "Preparar subcarpetas",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Preparar subcarpetas": {
+      "main": [
+        [
+          {
+            "node": "¿Uno o varios pagadores?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "¿Uno o varios pagadores?": {
+      "main": [
+        [
+          {
+            "node": "Armar error",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Drive: crear subcarpeta del pagador",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Preparar archivos",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Drive: crear subcarpeta del pagador": {
+      "main": [
+        [
+          {
+            "node": "Preparar archivos",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Preparar archivos": {
+      "main": [
+        [
+          {
+            "node": "Drive: subir archivo",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Drive: subir archivo": {
+      "main": [
+        [
+          {
+            "node": "Drive: ubicar y nombrar archivo",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Drive: ubicar y nombrar archivo": {
+      "main": [
+        [
+          {
+            "node": "Armar respuesta",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Armar respuesta": {
+      "main": [
+        [
+          {
+            "node": "Responder al panel",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Armar error": {
+      "main": [
+        [
+          {
+            "node": "Responder al panel",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {}
+}
