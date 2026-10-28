@@ -28,7 +28,7 @@ export async function startFakeSupabase() {
 
   const accounts = new Map(); // email → { id, password, name }
   const codes = new Map(); // código de un solo uso → { account, challenge }
-  const google = { email: null, name: null }; // cuenta de Google con la que "entra" el navegador
+  const google = { enabled: true, email: null, name: null }; // cuenta de Google con la que "entra" el navegador
   const tokens = new Map(); // access_token → user id
   let queue = Promise.resolve();
   const serial = (fn) => { const run = queue.then(fn, fn); queue = run.catch(() => {}); return run; };
@@ -100,7 +100,9 @@ export async function startFakeSupabase() {
     }
     // Ingreso con Google (simulado): /authorize vuelve a la app con ?code= y el
     // cliente lo cambia por la sesión con grant_type=pkce, como en Supabase.
+    if (req.method === 'GET' && url.pathname === '/auth/v1/settings') return [200, { external: { email: true, google: google.enabled } }];
     if (req.method === 'GET' && url.pathname === '/auth/v1/authorize') {
+      if (!google.enabled) return [400, { code: 400, error_code: 'validation_failed', msg: 'Unsupported provider: provider is not enabled' }];
       const back = new URL(url.searchParams.get('redirect_to'));
       if (!google.email) { back.searchParams.set('error', 'access_denied'); return [302, null, { Location: back.href }]; }
       let a = accounts.get(google.email);
@@ -161,6 +163,7 @@ export async function startFakeSupabase() {
     db,
     // Define con qué cuenta de Google entra el próximo navegador (null = cancela).
     signInWithGoogleAs: (email, name = email) => { google.email = email; google.name = name; },
+    setGoogleEnabled: (on) => { google.enabled = on; },
     // Consulta directa como la persona indicada (para comprobar permisos de tablas).
     asUser: (userId, sql) => db.transaction(async (tx) => {
       await tx.query(`select set_config('request.jwt.claim.sub', $1, true)`, [userId ?? '']);

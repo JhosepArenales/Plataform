@@ -76,6 +76,13 @@ function renderLogin() {
   const card = h('div', { class: 'login-card card' },
     h('div', { class: 'brand brand-lg' }, h('span', { class: 'brand-mark' }, 'P'), h('span', {}, 'Academia')), status);
   const goGoogle = async () => {
+    // Antes de salir hacia Google se confirma que el proveedor esté activo en Supabase;
+    // si no, se explica en pantalla en lugar de mostrar el error técnico de Supabase.
+    try {
+      const res = await fetch(`${ACADEMIA_CONFIG.url}/auth/v1/settings`, { headers: { apikey: ACADEMIA_CONFIG.key } });
+      const settings = res.ok ? await res.json() : null;
+      if (settings && !settings.external?.google) return showButton('El ingreso con Google todavía no está activado. Avísale a quien administra la Academia.', true);
+    } catch { return showButton('Sin conexión. Revisa tu internet e inténtalo de nuevo.'); }
     try { sessionStorage.setItem('academia.oauth_at', String(Date.now())); } catch { /* sin almacenamiento */ }
     const { error } = await sb.auth.signInWithOAuth({
       provider: 'google',
@@ -83,7 +90,7 @@ function renderLogin() {
     });
     if (error) showButton(authMessage(error));
   };
-  const showButton = (message) => {
+  const showButton = (message, googleOff = false) => {
     const btn = h('button', { class: 'btn btn-primary btn-block btn-lg', onclick: goGoogle }, 'Entrar con mi cuenta de Plataform');
     status.replaceChildren(
       h('h1', {}, '¡Bienvenido! 👋'),
@@ -91,6 +98,7 @@ function renderLogin() {
       message && h('p', { class: 'login-error' }, message),
       btn,
       h('p', { class: 'small muted' }, `Usa tu correo @${ACADEMIA_CONFIG.domain}.`),
+      googleOff && h('a', { href: '#/acceso-demo', class: 'link-center small' }, 'Administración: entrar con contraseña mientras se activa Google'),
       h('a', { href: '#/jugar', class: 'link-center' }, '¿Tienes un PIN de juego? Únete aquí'));
   };
   (async () => {
