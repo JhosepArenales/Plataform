@@ -61,6 +61,16 @@ Datos compartidos reales sin mantener un servidor: la interfaz se publica como u
 
 Seguridad: el navegador no tiene acceso a las tablas; todo pasa por funciones `app_*` que validan permisos, corrigen los quizzes y asignan los puntos en la base de datos. La URL y la clave publicable están en `supabase/config.js`.
 
+### Formación IA por niveles (solo en la versión con Supabase)
+
+Pestaña **Nivel IA 🚀** y, en administración, **Formación IA**:
+
+- **Examen IA First**: 10 preguntas tomadas al azar del banco (3 fáciles × 6, 3 medias × 10, 4 difíciles × 13 = 100 pts), 60 s por pregunta controlados en la base de datos y opciones en orden aleatorio. Niveles: Explorador 0–40, Practicante 41–70, Constructor 71–100.
+- **Ruta por nivel y rol**: contenido, formato, evidencia para subir y cursos de la categoría `IA · <Nivel>`. Una evidencia validada habilita el siguiente examen.
+- **Mapa de calor** área × nivel, con filtros y comparación entre el 1.º y el 2.º examen. Los directores (rol asignado por la administración) ven solo datos agregados de su área y nunca grupos de menos de 3 personas.
+- **Mentorías**, **Demo Days y microaprendizajes** (inscripción y encuesta) y **panel de indicadores**.
+- El banco trae 10 preguntas **en borrador** para revisar antes del lanzamiento. Para la demo: crea las cuentas `demo.explorador@`, `demo.practicante@` y `demo.constructor@` y usa "Preparar usuarios de prueba" en Indicadores (no cuentan en los indicadores).
+
 Diferencias con la versión con servidor: videos por link (YouTube no listado, Vimeo o Drive), IA en modo básico, sin lectura de URLs, y el juego en vivo llega en la siguiente etapa.
 
 ## Arquitectura

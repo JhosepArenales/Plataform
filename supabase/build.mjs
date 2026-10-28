@@ -36,6 +36,7 @@ const scripts = [
   ['public/js/views/game.js', {}],
   ['public/js/views/admin.js', {}],
   ['supabase/ui.js', {}],
+  ['supabase/ia.js', {}],
   ['public/js/app.js', {}],
 ].map(([file, renames]) => `// ---- ${file} ----\n${unmodule(read(file), renames)}`).join('\n\n');
 
@@ -44,13 +45,11 @@ const html = `<!doctype html>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="theme-color" content="#7B00CD">
+<meta name="theme-color" content="#9900FF">
 <title>Academia Plataform</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800&display=swap">
 <style>
 ${read('public/css/app.css')}
+${read('supabase/ia.css')}
 </style>
 ${LIBS.map((u) => `<script src="${u}"></script>`).join('\n')}
 <script>if (window.pdfjsLib) window.pdfjsLib.GlobalWorkerOptions.workerSrc = '${PDF_WORKER}';</script>

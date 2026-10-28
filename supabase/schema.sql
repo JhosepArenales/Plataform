@@ -19,7 +19,8 @@ create table if not exists public.app_config (
 -- La primera cuenta creada también queda como administradora.
 insert into public.app_config (key, value) values
   ('allowed_domain', 'plataform.com'),
-  ('admin_emails', '')
+  ('admin_emails', ''),
+  ('total_personal', '0')
 on conflict (key) do nothing;
 
 create table if not exists public.areas (
@@ -40,6 +41,9 @@ create table if not exists public.profiles (
   active boolean not null default true,
   created_at timestamptz not null default now()
 );
+-- Formación IA: rol en la organización (lo asigna la administración) y marca de usuario de prueba.
+alter table public.profiles add column if not exists org_role text check (org_role in ('director', 'lider', 'analista'));
+alter table public.profiles add column if not exists is_demo boolean not null default false;
 
 -- Las lecciones se guardan dentro del curso (sin las respuestas correctas).
 create table if not exists public.courses (
@@ -250,7 +254,7 @@ begin
   select * into a from areas where id = u.area_id;
   return jsonb_build_object(
     'user', jsonb_build_object('id', u.id, 'email', u.email, 'name', u.name, 'role', u.role,
-      'area_id', a.id, 'area_name', a.name, 'area_icon', a.icon),
+      'area_id', a.id, 'area_name', a.name, 'area_icon', a.icon, 'org_role', u.org_role, 'ia_level', _ia_level(u.id)),
     'counts', jsonb_build_object(
       'xp', coalesce((select sum(points) from xp_events where user_id = u.id), 0),
       'lessons', (select count(*) from progress where user_id = u.id),
@@ -589,6 +593,7 @@ begin
   return coalesce((select jsonb_agg(jsonb_build_object(
       'id', p.id, 'email', p.email, 'name', p.name, 'role', p.role, 'area_id', p.area_id,
       'area_name', a.name, 'area_icon', a.icon, 'active', p.active, 'created_at', p.created_at,
+      'org_role', p.org_role, 'ia_level', _ia_level(p.id), 'is_demo', p.is_demo,
       'xp', coalesce((select sum(points) from xp_events e where e.user_id = p.id), 0),
       'lessons_done', (select count(*) from progress pr where pr.user_id = p.id)) order by p.created_at)
     from profiles p left join areas a on a.id = p.area_id), '[]');
@@ -641,6 +646,616 @@ begin
     from sources s where s.id = any (p_ids)), '[]');
 end $$;
 
+-- ================================================================ Formación IA por niveles
+-- Examen IA First (diagnóstico), niveles Explorador / Practicante / Constructor,
+-- mapa de calor, rutas, evidencias, mentorías, Demo Days e indicadores.
+-- Reglas de privacidad: el resultado individual lo ven solo la persona y la
+-- administración; los directores ven datos agregados de su área.
+
+create table if not exists public.ia_questions (
+  id uuid primary key default gen_random_uuid(),
+  difficulty text not null check (difficulty in ('facil', 'media', 'dificil')),
+  prompt text not null,
+  options jsonb not null,
+  correct_index integer not null,
+  explanation text not null default '',
+  active boolean not null default true,
+  draft boolean not null default false,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create table if not exists public.ia_attempts (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references public.profiles (id) on delete cascade,
+  attempt_no integer not null,
+  area_id uuid references public.areas (id) on delete set null,
+  org_role text,
+  status text not null default 'en_curso' check (status in ('en_curso', 'terminado')),
+  score integer,
+  level text check (level in ('explorador', 'practicante', 'constructor')),
+  started_at timestamptz not null default now(),
+  finished_at timestamptz,
+  unique (user_id, attempt_no)
+);
+create index if not exists ia_attempts_user_idx on public.ia_attempts (user_id, attempt_no);
+
+-- Cada pregunta del intento guarda una copia de lo que se mostró (enunciado y
+-- opciones en el orden sorteado) y la hora de entrega: el tiempo se controla aquí.
+create table if not exists public.ia_attempt_items (
+  attempt_id uuid not null references public.ia_attempts (id) on delete cascade,
+  position integer not null,
+  question_id uuid references public.ia_questions (id) on delete set null,
+  difficulty text not null,
+  points integer not null,
+  prompt text not null,
+  options jsonb not null,
+  correct_shown integer not null,
+  served_at timestamptz,
+  answered_at timestamptz,
+  chosen_shown integer,
+  earned integer not null default 0,
+  status text not null default 'pendiente' check (status in ('pendiente', 'respondida', 'sin_respuesta')),
+  primary key (attempt_id, position)
+);
+
+create table if not exists public.ia_evidences (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references public.profiles (id) on delete cascade,
+  kind text not null check (kind in ('tarea', 'artefacto')),
+  title text not null,
+  hours_month numeric(6, 1) not null default 0,
+  quality text not null default '',
+  link text not null default '',
+  status text not null default 'pendiente' check (status in ('pendiente', 'validada', 'rechazada')),
+  review_note text not null default '',
+  reviewed_by uuid references public.profiles (id) on delete set null,
+  reviewed_at timestamptz,
+  created_at timestamptz not null default now()
+);
+
+create table if not exists public.ia_mentorships (
+  id uuid primary key default gen_random_uuid(),
+  mentee_id uuid not null references public.profiles (id) on delete cascade,
+  mentor_id uuid references public.profiles (id) on delete set null,
+  status text not null default 'solicitada' check (status in ('solicitada', 'activa', 'cerrada')),
+  note text not null default '',
+  requested_at timestamptz not null default now(),
+  started_at timestamptz,
+  closed_at timestamptz
+);
+
+create table if not exists public.ia_sessions (
+  id uuid primary key default gen_random_uuid(),
+  kind text not null check (kind in ('demo_day', 'micro')),
+  title text not null,
+  description text not null default '',
+  starts_at timestamptz not null,
+  created_at timestamptz not null default now()
+);
+
+create table if not exists public.ia_session_signups (
+  session_id uuid not null references public.ia_sessions (id) on delete cascade,
+  user_id uuid not null references public.profiles (id) on delete cascade,
+  pitch_title text not null,
+  created_at timestamptz not null default now(),
+  primary key (session_id, user_id)
+);
+
+create table if not exists public.ia_session_feedback (
+  session_id uuid not null references public.ia_sessions (id) on delete cascade,
+  user_id uuid not null references public.profiles (id) on delete cascade,
+  rating integer not null check (rating between 1 and 5),
+  comment text not null default '',
+  created_at timestamptz not null default now(),
+  primary key (session_id, user_id)
+);
+
+-- Borrador inicial del banco (marcado como borrador para revisarlo con Germán).
+insert into public.ia_questions (difficulty, prompt, options, correct_index, explanation, draft)
+select v.d, v.p, v.o::jsonb, v.c, v.e, true from (values
+  ('facil', '¿Qué es un "prompt"?', '["La instrucción o pregunta que le das a la IA","El nombre del modelo de IA","Un virus informático","La contraseña de la herramienta"]', 0, 'El prompt es lo que le pides a la IA; de su claridad depende la calidad de la respuesta.'),
+  ('facil', '¿Cuál de estos datos NUNCA debes pegar en una herramienta de IA que no esté aprobada por la empresa?', '["El número de cédula y datos financieros de un cliente","Una pregunta general sobre Excel","Un texto público de la página web de Plataform","Una idea para mejorar un correo"]', 0, 'Los datos personales y financieros de clientes son información sensible: solo se usan en herramientas aprobadas.'),
+  ('facil', 'La IA te da una cifra para un informe. ¿Qué haces?', '["La verifico en la fuente antes de usarla","La copio tal cual porque la IA no se equivoca","La redondeo y la uso","Le pido a la IA que confirme que es cierta"]', 0, 'La IA puede inventar datos con seguridad aparente; toda cifra se verifica en la fuente.'),
+  ('media', '¿Qué prompt dará un mejor resumen de un contrato?', '["Resume este contrato en 5 puntos para un comercial: obligaciones, plazos, montos y riesgos","Resume","Hazlo corto","Dime algo del contrato"]', 0, 'Un buen prompt dice para quién es, qué formato quieres y qué no puede faltar.'),
+  ('media', 'Tienes que repetir cada semana la misma tarea de copiar datos de correos a una hoja. ¿Cuál es el mejor primer paso con IA?', '["Describir el paso a paso de la tarea y pedir a la IA una propuesta para automatizarla","Pedirle a la IA que haga la tarea una sola vez","Seguir haciéndola a mano","Comprar un software sin analizar el proceso"]', 0, 'Antes de automatizar hay que entender el proceso; la IA ayuda a diseñar la automatización.'),
+  ('media', '¿Qué es una "alucinación" de la IA?', '["Una respuesta falsa presentada como si fuera cierta","Un error de conexión a internet","Una imagen generada por la IA","Cuando la IA tarda en responder"]', 0, 'Por eso la IA no reemplaza la verificación humana en decisiones importantes.'),
+  ('dificil', 'Vas a publicar un artefacto que usa datos de clientes. ¿Qué debe existir antes de publicarlo?', '["Ficha de control IA con datos que usa, riesgos, responsable y forma de medir su impacto","Solo que funcione en tu computador","El visto bueno de un compañero por chat","Nada, si es para uso interno"]', 0, 'Un artefacto con datos sensibles necesita control: qué datos usa, quién responde y cómo se mide.'),
+  ('dificil', 'Un agente de IA va a enviar correos a clientes de forma automática. ¿Qué control es más importante?', '["Que una persona revise y apruebe antes del envío en los casos críticos","Que el agente use un lenguaje formal","Que el agente envíe todo lo más rápido posible","Que el agente tenga acceso a todo el correo de la empresa"]', 0, 'Las acciones con impacto externo necesitan supervisión humana y permisos mínimos.'),
+  ('dificil', '¿Cómo demuestras el impacto de una automatización con IA?', '["Midiendo las horas al mes y los errores antes y después","Contando cuántas veces se usó la herramienta","Preguntando si a la gente le gustó","Con el número de prompts escritos"]', 0, 'El impacto se mide en resultados: tiempo liberado y calidad, no en uso o asistencia.'),
+  ('dificil', 'Una respuesta de la IA para un cálculo de factoring no cuadra con la calculadora oficial. ¿Qué haces?', '["Uso la calculadora oficial, reporto la diferencia y reviso las instrucciones del artefacto","Uso la respuesta de la IA porque es más reciente","Promedio los dos valores","Ignoro la diferencia si es pequeña"]', 0, 'La fuente oficial manda; las diferencias se reportan para corregir el artefacto.')
+) as v (d, p, o, c, e)
+where not exists (select 1 from public.ia_questions);
+
+-- ---------------------------------------------------------------- Ayudantes
+
+create or replace function public._ia_points(p_difficulty text) returns integer
+language sql immutable as $$
+  select case p_difficulty when 'facil' then 6 when 'media' then 10 else 13 end
+$$;
+
+create or replace function public._ia_level_for(p_score integer) returns text
+language sql immutable as $$
+  select case when p_score <= 40 then 'explorador' when p_score <= 70 then 'practicante' else 'constructor' end
+$$;
+
+create or replace function public._ia_level(p_user uuid) returns text
+language sql stable security definer set search_path = public as $$
+  select level from ia_attempts where user_id = p_user and status = 'terminado' order by attempt_no desc limit 1
+$$;
+
+-- Puede presentar si nunca lo hizo, o si tiene una evidencia validada después de su último examen.
+create or replace function public._ia_can_start(p_user uuid) returns boolean
+language sql stable security definer set search_path = public as $$
+  select not exists (select 1 from ia_attempts where user_id = p_user and status = 'terminado')
+    or exists (select 1 from ia_evidences e where e.user_id = p_user and e.status = 'validada'
+               and e.reviewed_at > (select max(finished_at) from ia_attempts where user_id = p_user and status = 'terminado'))
+$$;
+
+-- Director: devuelve su área; administración: null (todas). Otros: error.
+create or replace function public._ia_scope(u public.profiles) returns uuid
+language plpgsql stable as $$
+begin
+  if u.role = 'admin' then return null; end if;
+  if u.org_role = 'director' and u.area_id is not null then return u.area_id; end if;
+  raise exception 'El mapa de calor es para la administración y los directores.' using errcode = 'PT403';
+end $$;
+
+create or replace function public._ia_finish(p_attempt uuid) returns void
+language plpgsql security definer set search_path = public as $$
+declare v_score int;
+begin
+  select coalesce(sum(earned), 0) into v_score from ia_attempt_items where attempt_id = p_attempt;
+  update ia_attempts set status = 'terminado', score = v_score, level = _ia_level_for(v_score), finished_at = now()
+  where id = p_attempt and status = 'en_curso';
+end $$;
+
+-- ---------------------------------------------------------------- Examen
+
+create or replace function public.app_ia_me() returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare u profiles := _me(); v_open ia_mentorships;
+begin
+  select * into v_open from ia_mentorships where mentee_id = u.id and status <> 'cerrada' order by requested_at desc limit 1;
+  return jsonb_build_object(
+    'org_role', u.org_role,
+    'level', _ia_level(u.id),
+    'in_progress', exists (select 1 from ia_attempts where user_id = u.id and status = 'en_curso'),
+    'can_start', _ia_can_start(u.id),
+    'attempts', coalesce((select jsonb_agg(jsonb_build_object('attempt_no', a.attempt_no, 'score', a.score, 'level', a.level,
+        'finished_at', a.finished_at) order by a.attempt_no) from ia_attempts a where a.user_id = u.id and a.status = 'terminado'), '[]'),
+    'evidences', coalesce((select jsonb_agg(jsonb_build_object('id', e.id, 'kind', e.kind, 'title', e.title, 'hours_month', e.hours_month,
+        'quality', e.quality, 'link', e.link, 'status', e.status, 'review_note', e.review_note, 'created_at', e.created_at) order by e.created_at desc)
+      from ia_evidences e where e.user_id = u.id), '[]'),
+    'mentorship', case when v_open.id is null then null else jsonb_build_object('id', v_open.id, 'status', v_open.status,
+        'mentor', (select name from profiles where id = v_open.mentor_id), 'requested_at', v_open.requested_at, 'started_at', v_open.started_at) end,
+    'mentees', coalesce((select jsonb_agg(jsonb_build_object('name', p.name, 'since', m.started_at)) from ia_mentorships m
+      join profiles p on p.id = m.mentee_id where m.mentor_id = u.id and m.status = 'activa'), '[]'));
+end $$;
+
+-- Devuelve la pregunta actual del intento en curso (o el resultado si ya terminó).
+-- Las preguntas vencidas (más de 60 s) se marcan como no respondidas.
+create or replace function public.app_ia_current() returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare u profiles := _me(); a ia_attempts; it ia_attempt_items;
+begin
+  select * into a from ia_attempts where user_id = u.id and status = 'en_curso' order by attempt_no desc limit 1;
+  if a.id is null then
+    select * into a from ia_attempts where user_id = u.id and status = 'terminado' order by attempt_no desc limit 1;
+    if a.id is null then return jsonb_build_object('status', 'none'); end if;
+    return app_ia_result(a.id);
+  end if;
+  loop
+    select * into it from ia_attempt_items where attempt_id = a.id and status = 'pendiente' order by position limit 1;
+    if it.position is null then
+      perform _ia_finish(a.id);
+      return app_ia_result(a.id);
+    end if;
+    if it.served_at is null then
+      update ia_attempt_items set served_at = now() where attempt_id = a.id and position = it.position returning * into it;
+    elsif now() > it.served_at + interval '63 seconds' then
+      update ia_attempt_items set status = 'sin_respuesta' where attempt_id = a.id and position = it.position;
+      continue;
+    end if;
+    return jsonb_build_object('status', 'question', 'attempt_id', a.id, 'attempt_no', a.attempt_no, 'position', it.position,
+      'total', (select count(*) from ia_attempt_items where attempt_id = a.id), 'difficulty', it.difficulty, 'points', it.points,
+      'prompt', it.prompt, 'options', it.options,
+      'remaining_ms', greatest(0, round(extract(epoch from (it.served_at + interval '60 seconds' - now())) * 1000)));
+  end loop;
+end $$;
+
+create or replace function public.app_ia_start() returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare u profiles := _me(); v_no int; v_attempt uuid; q record; v_pos int := 0; v_opts jsonb; v_correct int;
+begin
+  if exists (select 1 from ia_attempts where user_id = u.id and status = 'en_curso') then return app_ia_current(); end if;
+  if not _ia_can_start(u.id) then
+    raise exception 'Para presentar el examen de nuevo, registra una evidencia de tu ruta y espera a que la validen.' using errcode = 'PT409';
+  end if;
+  if (select count(*) from ia_questions where active and difficulty = 'facil') < 3
+     or (select count(*) from ia_questions where active and difficulty = 'media') < 3
+     or (select count(*) from ia_questions where active and difficulty = 'dificil') < 4 then
+    raise exception 'El banco necesita al menos 3 preguntas fáciles, 3 medias y 4 difíciles activas.' using errcode = 'PT409';
+  end if;
+  select coalesce(max(attempt_no), 0) + 1 into v_no from ia_attempts where user_id = u.id;
+  insert into ia_attempts (user_id, attempt_no, area_id, org_role) values (u.id, v_no, u.area_id, u.org_role) returning id into v_attempt;
+  for q in
+    select * from (select *, row_number() over (partition by difficulty order by random()) as rn from ia_questions where active) s
+    where (difficulty = 'facil' and rn <= 3) or (difficulty = 'media' and rn <= 3) or (difficulty = 'dificil' and rn <= 4)
+    order by case difficulty when 'facil' then 1 when 'media' then 2 else 3 end, random()
+  loop
+    v_pos := v_pos + 1;
+    -- Orden aleatorio de opciones: se guarda dónde quedó la correcta.
+    select jsonb_agg(o.value order by o.r), array_position(array_agg(o.ord order by o.r), (q.correct_index + 1)::bigint) - 1
+    into v_opts, v_correct
+    from (select value, ordinality as ord, random() as r from jsonb_array_elements(q.options) with ordinality) o;
+    insert into ia_attempt_items (attempt_id, position, question_id, difficulty, points, prompt, options, correct_shown)
+    values (v_attempt, v_pos, q.id, q.difficulty, _ia_points(q.difficulty), q.prompt, v_opts, v_correct);
+  end loop;
+  return app_ia_current();
+end $$;
+
+create or replace function public.app_ia_answer(p_attempt uuid, p_position integer, p_choice integer) returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare u profiles := _me(); it ia_attempt_items;
+begin
+  select i.* into it from ia_attempt_items i join ia_attempts a on a.id = i.attempt_id
+  where i.attempt_id = p_attempt and i.position = p_position and a.user_id = u.id and a.status = 'en_curso';
+  if it.position is null then raise exception 'Esta pregunta ya no está disponible.' using errcode = 'PT409'; end if;
+  if it.status = 'pendiente' and it.served_at is not null then
+    if now() > it.served_at + interval '63 seconds' then
+      update ia_attempt_items set status = 'sin_respuesta' where attempt_id = p_attempt and position = p_position;
+    else
+      update ia_attempt_items set status = 'respondida', answered_at = now(), chosen_shown = p_choice,
+        earned = case when p_choice = it.correct_shown then it.points else 0 end
+      where attempt_id = p_attempt and position = p_position;
+    end if;
+  end if;
+  return app_ia_current();
+end $$;
+
+-- Resultado de un intento: solo para su dueño o la administración. No revela las respuestas correctas.
+create or replace function public.app_ia_result(p_attempt uuid) returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare u profiles := _me(); a ia_attempts;
+begin
+  select * into a from ia_attempts where id = p_attempt;
+  if a.id is null or (a.user_id <> u.id and u.role <> 'admin') then raise exception 'Resultado no encontrado.' using errcode = 'PT404'; end if;
+  return jsonb_build_object('status', case when a.status = 'terminado' then 'finished' else 'in_progress' end,
+    'attempt_no', a.attempt_no, 'score', a.score, 'level', a.level, 'finished_at', a.finished_at,
+    'by_difficulty', (select jsonb_agg(jsonb_build_object('difficulty', d.difficulty, 'correct', d.correct, 'total', d.total,
+        'earned', d.earned, 'possible', d.possible) order by case d.difficulty when 'facil' then 1 when 'media' then 2 else 3 end)
+      from (select difficulty, count(*) filter (where earned > 0) as correct, count(*) as total, sum(earned) as earned, sum(points) as possible
+            from ia_attempt_items where attempt_id = a.id group by difficulty) d),
+    'unanswered', (select count(*) from ia_attempt_items where attempt_id = a.id and status = 'sin_respuesta'));
+end $$;
+
+-- ---------------------------------------------------------------- Mapa de calor
+
+create or replace function public.app_ia_heatmap(p_area uuid default null, p_role text default null, p_from date default null, p_to date default null) returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare u profiles := _me(); v_scope uuid := _ia_scope(u); v_area uuid := coalesce(v_scope, p_area); v_admin boolean := u.role = 'admin';
+begin
+  return jsonb_build_object(
+    'scope', case when v_admin then 'admin' else 'director' end,
+    'rows', coalesce((
+      with latest as (
+        select distinct on (a.user_id) a.user_id, a.area_id, a.level
+        from ia_attempts a
+        where a.status = 'terminado'
+          and (v_area is null or a.area_id = v_area)
+          and (p_role is null or a.org_role = p_role)
+          and (p_from is null or a.finished_at >= p_from)
+          and (p_to is null or a.finished_at < p_to + 1)
+        order by a.user_id, a.attempt_no desc),
+      per_area as (
+        select l.area_id, count(*) as total,
+          count(*) filter (where l.level = 'explorador') as explorador,
+          count(*) filter (where l.level = 'practicante') as practicante,
+          count(*) filter (where l.level = 'constructor') as constructor
+        from latest l group by l.area_id)
+      select jsonb_agg(jsonb_build_object(
+          'area_id', pa.area_id, 'area', coalesce(ar.name, 'Sin área'), 'icon', coalesce(ar.icon, '❔'), 'total', pa.total,
+          -- Grupos de menos de 3 personas no se muestran a directores: revelarían puntajes individuales.
+          'hidden', not v_admin and pa.total < 3,
+          'explorador', case when not v_admin and pa.total < 3 then null else pa.explorador end,
+          'practicante', case when not v_admin and pa.total < 3 then null else pa.practicante end,
+          'constructor', case when not v_admin and pa.total < 3 then null else pa.constructor end)
+        order by coalesce(ar.name, 'zzz'))
+      from per_area pa left join areas ar on ar.id = pa.area_id), '[]'),
+    'progress', (
+      with firsts as (
+        select a1.user_id, a1.area_id, a1.level as first_level, a2.level as second_level
+        from ia_attempts a1 join ia_attempts a2 on a2.user_id = a1.user_id and a2.attempt_no = 2 and a2.status = 'terminado'
+        where a1.attempt_no = 1 and a1.status = 'terminado'
+          and (v_area is null or a1.area_id = v_area) and (p_role is null or a1.org_role = p_role)),
+      ranked as (
+        select f.*, (case f.second_level when 'explorador' then 1 when 'practicante' then 2 else 3 end)
+                  - (case f.first_level when 'explorador' then 1 when 'practicante' then 2 else 3 end) as delta from firsts f)
+      select jsonb_build_object(
+        'with_two', (select count(*) from ranked),
+        'up', (select count(*) from ranked where delta > 0),
+        'same', (select count(*) from ranked where delta = 0),
+        'down', (select count(*) from ranked where delta < 0),
+        'hidden', not v_admin and (select count(*) from ranked) < 3,
+        'people', case when v_admin then coalesce((select jsonb_agg(jsonb_build_object('name', p.name, 'area', ar.name,
+            'first', r.first_level, 'second', r.second_level, 'delta', r.delta) order by r.delta desc, p.name)
+          from ranked r join profiles p on p.id = r.user_id left join areas ar on ar.id = r.area_id), '[]') else '[]' end)));
+end $$;
+
+-- ---------------------------------------------------------------- Evidencias
+
+create or replace function public.app_ia_evidence_save(p_kind text, p_title text, p_hours numeric default 0, p_quality text default '', p_link text default '') returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare u profiles := _me(); e ia_evidences;
+begin
+  if p_kind is null or p_kind not in ('tarea', 'artefacto') then raise exception 'Elige si es una tarea o un artefacto.' using errcode = 'PT400'; end if;
+  if length(trim(coalesce(p_title, ''))) < 3 then raise exception 'Describe la tarea o el artefacto.' using errcode = 'PT400'; end if;
+  if coalesce(p_hours, 0) < 0 or coalesce(p_hours, 0) > 744 then raise exception 'Las horas al mes deben estar entre 0 y 744.' using errcode = 'PT400'; end if;
+  if coalesce(p_link, '') <> '' and p_link !~* '^https://' then raise exception 'El enlace debe empezar por https://' using errcode = 'PT400'; end if;
+  insert into ia_evidences (user_id, kind, title, hours_month, quality, link)
+  values (u.id, p_kind, left(trim(p_title), 200), coalesce(p_hours, 0), left(coalesce(p_quality, ''), 500), left(coalesce(p_link, ''), 500))
+  returning * into e;
+  return to_jsonb(e);
+end $$;
+
+create or replace function public.app_ia_evidences(p_status text default 'pendiente') returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare u profiles := _admin();
+begin
+  return coalesce((select jsonb_agg(jsonb_build_object('id', e.id, 'kind', e.kind, 'title', e.title, 'hours_month', e.hours_month,
+      'quality', e.quality, 'link', e.link, 'status', e.status, 'review_note', e.review_note, 'created_at', e.created_at,
+      'person', p.name, 'area', ar.name, 'level', _ia_level(p.id)) order by e.created_at)
+    from ia_evidences e join profiles p on p.id = e.user_id left join areas ar on ar.id = p.area_id
+    where p_status is null or e.status = p_status), '[]');
+end $$;
+
+create or replace function public.app_ia_evidence_review(p_id uuid, p_status text, p_note text default '') returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare u profiles := _admin();
+begin
+  if p_status not in ('validada', 'rechazada') then raise exception 'Estado inválido.' using errcode = 'PT400'; end if;
+  update ia_evidences set status = p_status, review_note = coalesce(p_note, ''), reviewed_by = u.id, reviewed_at = now() where id = p_id;
+  if not found then raise exception 'Evidencia no encontrada.' using errcode = 'PT404'; end if;
+  return jsonb_build_object('ok', true);
+end $$;
+
+-- ---------------------------------------------------------------- Mentorías
+
+create or replace function public.app_ia_mentor_request(p_note text default '') returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare u profiles := _me(); v_level text := _ia_level(u.id);
+begin
+  if v_level is null then raise exception 'Primero presenta el examen IA First.' using errcode = 'PT409'; end if;
+  if v_level = 'constructor' then raise exception 'Como Constructor puedes ser mentor; la administración te asignará aprendices.' using errcode = 'PT409'; end if;
+  if exists (select 1 from ia_mentorships where mentee_id = u.id and status <> 'cerrada') then
+    raise exception 'Ya tienes una solicitud de mentoría abierta.' using errcode = 'PT409';
+  end if;
+  insert into ia_mentorships (mentee_id, note) values (u.id, left(coalesce(p_note, ''), 300));
+  return jsonb_build_object('ok', true);
+end $$;
+
+create or replace function public.app_ia_mentorships() returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare u profiles := _admin();
+begin
+  return jsonb_build_object(
+    'items', coalesce((select jsonb_agg(jsonb_build_object('id', m.id, 'status', m.status, 'note', m.note, 'requested_at', m.requested_at,
+        'started_at', m.started_at, 'mentee', pe.name, 'mentee_area', ar.name, 'mentee_level', _ia_level(pe.id), 'mentor', pm.name)
+        order by case m.status when 'solicitada' then 1 when 'activa' then 2 else 3 end, m.requested_at)
+      from ia_mentorships m join profiles pe on pe.id = m.mentee_id left join profiles pm on pm.id = m.mentor_id
+      left join areas ar on ar.id = pe.area_id), '[]'),
+    'mentors', coalesce((select jsonb_agg(jsonb_build_object('id', p.id, 'name', p.name, 'area', ar.name,
+        'active', (select count(*) from ia_mentorships m where m.mentor_id = p.id and m.status = 'activa')) order by p.name)
+      from profiles p left join areas ar on ar.id = p.area_id where p.active and _ia_level(p.id) = 'constructor'), '[]'));
+end $$;
+
+create or replace function public.app_ia_mentor_assign(p_id uuid, p_mentor uuid) returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare u profiles := _admin(); m ia_mentorships;
+begin
+  select * into m from ia_mentorships where id = p_id;
+  if m.id is null then raise exception 'Mentoría no encontrada.' using errcode = 'PT404'; end if;
+  if p_mentor = m.mentee_id or coalesce(_ia_level(p_mentor), '') <> 'constructor' then
+    raise exception 'El mentor debe ser una persona de nivel Constructor.' using errcode = 'PT400';
+  end if;
+  update ia_mentorships set mentor_id = p_mentor, status = 'activa', started_at = coalesce(started_at, now()) where id = p_id;
+  return jsonb_build_object('ok', true);
+end $$;
+
+create or replace function public.app_ia_mentor_close(p_id uuid) returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare u profiles := _admin();
+begin
+  update ia_mentorships set status = 'cerrada', closed_at = now() where id = p_id;
+  if not found then raise exception 'Mentoría no encontrada.' using errcode = 'PT404'; end if;
+  return jsonb_build_object('ok', true);
+end $$;
+
+-- ---------------------------------------------------------------- Demo Days y microaprendizajes
+
+create or replace function public.app_ia_sessions() returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare u profiles := _me();
+begin
+  return coalesce((select jsonb_agg(jsonb_build_object('id', s.id, 'kind', s.kind, 'title', s.title, 'description', s.description,
+      'starts_at', s.starts_at, 'past', s.starts_at < now(),
+      'presenters', coalesce((select jsonb_agg(jsonb_build_object('name', p.name, 'pitch', g.pitch_title) order by g.created_at)
+        from ia_session_signups g join profiles p on p.id = g.user_id where g.session_id = s.id), '[]'),
+      'my_pitch', (select pitch_title from ia_session_signups where session_id = s.id and user_id = u.id),
+      'my_rating', (select rating from ia_session_feedback where session_id = s.id and user_id = u.id),
+      'feedback_count', case when u.role = 'admin' then (select count(*) from ia_session_feedback where session_id = s.id) end,
+      'avg_rating', case when u.role = 'admin' then (select round(avg(rating), 1) from ia_session_feedback where session_id = s.id) end,
+      'comments', case when u.role = 'admin' then coalesce((select jsonb_agg(comment) from ia_session_feedback where session_id = s.id and comment <> ''), '[]') end)
+      order by s.starts_at)
+    from ia_sessions s), '[]');
+end $$;
+
+create or replace function public.app_ia_session_save(p_id uuid, p_kind text, p_title text, p_starts_at timestamptz, p_description text default '') returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare u profiles := _admin(); s ia_sessions;
+begin
+  if p_kind not in ('demo_day', 'micro') then raise exception 'Tipo de sesión inválido.' using errcode = 'PT400'; end if;
+  if length(trim(coalesce(p_title, ''))) < 3 or p_starts_at is null then raise exception 'La sesión necesita título y fecha.' using errcode = 'PT400'; end if;
+  if p_id is null then
+    insert into ia_sessions (kind, title, starts_at, description) values (p_kind, trim(p_title), p_starts_at, coalesce(p_description, '')) returning * into s;
+  else
+    update ia_sessions set kind = p_kind, title = trim(p_title), starts_at = p_starts_at, description = coalesce(p_description, '') where id = p_id returning * into s;
+    if s.id is null then raise exception 'Sesión no encontrada.' using errcode = 'PT404'; end if;
+  end if;
+  return to_jsonb(s);
+end $$;
+
+create or replace function public.app_ia_session_delete(p_id uuid) returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare u profiles := _admin();
+begin
+  delete from ia_sessions where id = p_id;
+  return jsonb_build_object('ok', true);
+end $$;
+
+-- Inscribirse a presentar (pitch de 5 min + 5 de preguntas). p_pitch vacío cancela la inscripción.
+create or replace function public.app_ia_session_signup(p_session uuid, p_pitch text) returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare u profiles := _me(); s ia_sessions;
+begin
+  select * into s from ia_sessions where id = p_session;
+  if s.id is null then raise exception 'Sesión no encontrada.' using errcode = 'PT404'; end if;
+  if s.kind <> 'demo_day' then raise exception 'Solo los Demo Days reciben presentaciones.' using errcode = 'PT400'; end if;
+  if s.starts_at < now() then raise exception 'Esta sesión ya pasó.' using errcode = 'PT409'; end if;
+  if length(trim(coalesce(p_pitch, ''))) = 0 then
+    delete from ia_session_signups where session_id = p_session and user_id = u.id;
+  else
+    insert into ia_session_signups (session_id, user_id, pitch_title) values (p_session, u.id, left(trim(p_pitch), 150))
+    on conflict (session_id, user_id) do update set pitch_title = excluded.pitch_title;
+  end if;
+  return jsonb_build_object('ok', true);
+end $$;
+
+create or replace function public.app_ia_session_feedback(p_session uuid, p_rating integer, p_comment text default '') returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare u profiles := _me(); s ia_sessions;
+begin
+  select * into s from ia_sessions where id = p_session;
+  if s.id is null then raise exception 'Sesión no encontrada.' using errcode = 'PT404'; end if;
+  if s.starts_at > now() then raise exception 'La encuesta se abre cuando termina la sesión.' using errcode = 'PT409'; end if;
+  if p_rating is null or p_rating not between 1 and 5 then raise exception 'Califica de 1 a 5.' using errcode = 'PT400'; end if;
+  insert into ia_session_feedback (session_id, user_id, rating, comment) values (p_session, u.id, p_rating, left(coalesce(p_comment, ''), 500))
+  on conflict (session_id, user_id) do update set rating = excluded.rating, comment = excluded.comment;
+  return jsonb_build_object('ok', true);
+end $$;
+
+-- ---------------------------------------------------------------- Banco de preguntas
+
+create or replace function public.app_ia_questions() returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare u profiles := _admin();
+begin
+  return coalesce((select jsonb_agg(to_jsonb(q) order by case q.difficulty when 'facil' then 1 when 'media' then 2 else 3 end, q.created_at)
+    from ia_questions q), '[]');
+end $$;
+
+create or replace function public.app_ia_question_save(p_id uuid, p_difficulty text, p_prompt text, p_options jsonb, p_correct integer, p_explanation text default '', p_active boolean default true) returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare u profiles := _admin(); q ia_questions;
+begin
+  if p_difficulty not in ('facil', 'media', 'dificil') then raise exception 'Elige la dificultad.' using errcode = 'PT400'; end if;
+  if length(trim(coalesce(p_prompt, ''))) < 5 then raise exception 'Escribe la pregunta.' using errcode = 'PT400'; end if;
+  if jsonb_typeof(p_options) <> 'array' or jsonb_array_length(p_options) not between 2 and 4
+     or exists (select 1 from jsonb_array_elements_text(p_options) o where trim(o) = '') then
+    raise exception 'La pregunta necesita entre 2 y 4 opciones sin espacios vacíos.' using errcode = 'PT400';
+  end if;
+  if p_correct is null or p_correct not between 0 and jsonb_array_length(p_options) - 1 then
+    raise exception 'Marca la respuesta correcta.' using errcode = 'PT400';
+  end if;
+  if p_id is null then
+    insert into ia_questions (difficulty, prompt, options, correct_index, explanation, active)
+    values (p_difficulty, trim(p_prompt), p_options, p_correct, coalesce(p_explanation, ''), coalesce(p_active, true)) returning * into q;
+  else
+    update ia_questions set difficulty = p_difficulty, prompt = trim(p_prompt), options = p_options, correct_index = p_correct,
+      explanation = coalesce(p_explanation, ''), active = coalesce(p_active, true), draft = false, updated_at = now()
+    where id = p_id returning * into q;
+    if q.id is null then raise exception 'Pregunta no encontrada.' using errcode = 'PT404'; end if;
+  end if;
+  return to_jsonb(q);
+end $$;
+
+-- ---------------------------------------------------------------- Personas e indicadores
+
+create or replace function public.app_admin_set_org_role(p_user uuid, p_role text default null) returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare u profiles := _admin();
+begin
+  if p_role is not null and p_role not in ('director', 'lider', 'analista') then raise exception 'Rol inválido.' using errcode = 'PT400'; end if;
+  update profiles set org_role = p_role where id = p_user;
+  if not found then raise exception 'Persona no encontrada.' using errcode = 'PT404'; end if;
+  return jsonb_build_object('ok', true);
+end $$;
+
+create or replace function public.app_ia_kpis() returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare
+  u profiles := _admin();
+  v_total int := nullif((select value from app_config where key = 'total_personal'), '')::int;
+  v_people int := (select count(*) from profiles where active and not is_demo);
+  v_tested int := (select count(distinct a.user_id) from ia_attempts a join profiles p on p.id = a.user_id
+                   where a.status = 'terminado' and not p.is_demo);
+  v_two int; v_up int;
+begin
+  select count(*), count(*) filter (where (case a2.level when 'explorador' then 1 when 'practicante' then 2 else 3 end)
+                                        > (case a1.level when 'explorador' then 1 when 'practicante' then 2 else 3 end))
+  into v_two, v_up
+  from ia_attempts a1 join ia_attempts a2 on a2.user_id = a1.user_id and a2.attempt_no = 2 and a2.status = 'terminado'
+  join profiles p on p.id = a1.user_id
+  where a1.attempt_no = 1 and a1.status = 'terminado' and not p.is_demo;
+  return jsonb_build_object(
+    'total_personal', coalesce(nullif(v_total, 0), v_people), 'total_from_config', coalesce(v_total, 0) > 0,
+    'tested', v_tested, 'with_two', v_two, 'up', v_up,
+    'artifacts', (select count(*) from ia_evidences e join profiles p on p.id = e.user_id where e.kind = 'artefacto' and e.status = 'validada' and not p.is_demo),
+    'artifacts_measured', (select count(*) from ia_evidences e join profiles p on p.id = e.user_id
+      where e.kind = 'artefacto' and e.status = 'validada' and not p.is_demo and (e.hours_month > 0 or trim(e.quality) <> '')),
+    'hours_month', (select coalesce(sum(e.hours_month), 0) from ia_evidences e join profiles p on p.id = e.user_id where e.status = 'validada' and not p.is_demo),
+    'pending_evidences', (select count(*) from ia_evidences where status = 'pendiente'),
+    'pending_mentorships', (select count(*) from ia_mentorships where status = 'solicitada'),
+    'levels', (select jsonb_build_object(
+        'explorador', count(*) filter (where l = 'explorador'), 'practicante', count(*) filter (where l = 'practicante'),
+        'constructor', count(*) filter (where l = 'constructor'))
+      from (select _ia_level(p.id) as l from profiles p where p.active and not p.is_demo) x));
+end $$;
+
+create or replace function public.app_ia_set_total(p_total integer) returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare u profiles := _admin();
+begin
+  if p_total is null or p_total < 0 or p_total > 100000 then raise exception 'Número inválido.' using errcode = 'PT400'; end if;
+  insert into app_config (key, value) values ('total_personal', p_total::text) on conflict (key) do update set value = excluded.value;
+  return jsonb_build_object('ok', true);
+end $$;
+
+-- Usuarios de prueba para la demo: marca como "demo" las cuentas demo.explorador@,
+-- demo.practicante@ y demo.constructor@ (creadas antes desde la pantalla de ingreso)
+-- y les registra un examen terminado. No cuentan en los indicadores.
+create or replace function public.app_ia_demo_setup() returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare
+  u profiles := _admin();
+  v_domain text := coalesce((select value from app_config where key = 'allowed_domain'), 'plataform.com');
+  d record; p profiles; v_attempt uuid; v_ready jsonb := '[]'; v_missing jsonb := '[]';
+begin
+  for d in select * from (values ('explorador', 32), ('practicante', 58), ('constructor', 87)) as t (level, score) loop
+    select * into p from profiles where email = format('demo.%s@%s', d.level, v_domain);
+    if p.id is null then v_missing := v_missing || to_jsonb(format('demo.%s@%s', d.level, v_domain)); continue; end if;
+    update profiles set is_demo = true, org_role = coalesce(org_role, 'analista'),
+      area_id = coalesce(area_id, (select id from areas where active order by lower(name) limit 1)) where id = p.id;
+    if not exists (select 1 from ia_attempts where user_id = p.id) then
+      insert into ia_attempts (user_id, attempt_no, area_id, org_role, status, score, level, finished_at)
+      select p.id, 1, area_id, org_role, 'terminado', d.score, d.level, now() from profiles where id = p.id returning id into v_attempt;
+    end if;
+    v_ready := v_ready || to_jsonb(p.email);
+  end loop;
+  return jsonb_build_object('ready', v_ready, 'missing', v_missing);
+end $$;
+
 -- ---------------------------------------------------------------- Permisos
 
 -- Tablas cerradas al navegador: sin políticas RLS, nadie las lee directamente.
@@ -654,6 +1269,14 @@ alter table public.sources enable row level security;
 alter table public.progress enable row level security;
 alter table public.quiz_attempts enable row level security;
 alter table public.xp_events enable row level security;
+alter table public.ia_questions enable row level security;
+alter table public.ia_attempts enable row level security;
+alter table public.ia_attempt_items enable row level security;
+alter table public.ia_evidences enable row level security;
+alter table public.ia_mentorships enable row level security;
+alter table public.ia_sessions enable row level security;
+alter table public.ia_session_signups enable row level security;
+alter table public.ia_session_feedback enable row level security;
 revoke all on all tables in schema public from anon, authenticated;
 
 -- Solo las funciones app_* quedan disponibles, y solo para personas con sesión.

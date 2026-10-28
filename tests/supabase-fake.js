@@ -5,6 +5,8 @@
 import http from 'node:http';
 import fs from 'node:fs';
 import crypto from 'node:crypto';
+import vm from 'node:vm';
+import * as supabaseJs from '@supabase/supabase-js';
 import { PGlite } from '@electric-sql/pglite';
 
 const AUTH_STUB = `
@@ -134,4 +136,28 @@ export async function startFakeSupabase() {
     }),
     close: async () => { server.close(); await db.close(); },
   };
+}
+
+const read = (p) => fs.readFileSync(new URL(`../${p}`, import.meta.url), 'utf8');
+function memoryStorage() {
+  const m = new Map();
+  return { getItem: (k) => (m.has(k) ? m.get(k) : null), setItem: (k, v) => m.set(k, String(v)), removeItem: (k) => m.delete(k) };
+}
+
+// Un "navegador" por persona: supabase/backend.js con su propio cliente y sesión.
+export async function openBrowser(fake, email, { name = 'Persona', create = true, password = 'clave-segura-1' } = {}) {
+  const window = { supabase: supabaseJs, localStorage: memoryStorage(), fetch: globalThis.fetch };
+  const ctx = vm.createContext({ window, crypto: globalThis.crypto, Response, URL, URLSearchParams, TextDecoder, FormData, File, Blob, DecompressionStream, console });
+  vm.runInContext(read('supabase/config.js').replace(/url: '[^']+'/, `url: '${fake.url}'`).replace(/^const /m, 'var '), ctx);
+  vm.runInContext(read('demo/lib/content.js'), ctx);
+  vm.runInContext(read('supabase/backend.js'), ctx);
+  const sb = vm.runInContext('sb', ctx);
+  const auth = create
+    ? await sb.auth.signUp({ email, password, options: { data: { name } } })
+    : await sb.auth.signInWithPassword({ email, password });
+  const call = async (p, { method = 'GET', body } = {}) => {
+    const res = await window.fetch(p, { method, body: body instanceof FormData ? body : body === undefined ? undefined : JSON.stringify(body) });
+    return { status: res.status, data: await res.json() };
+  };
+  return { call, sb, auth, id: auth.data?.user?.id };
 }

@@ -37,9 +37,6 @@ const scripts = [
 ].map(([file, renames]) => `// ---- ${file} ----\n${unmodule(read(file), renames)}`).join('\n\n');
 
 const html = `<title>Demo Academia Plataform</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800&display=swap">
 <style>
 ${read('public/css/app.css')}
 ${read('demo/demo.css')}
@@ -69,7 +66,7 @@ fs.writeFileSync(path.join(deployDir, 'index.html'), `<!doctype html>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="theme-color" content="#7B00CD">
+<meta name="theme-color" content="#9900FF">
 ${html.replace('<!--LIBS-->\n', '').replace('</style>', '</style>\n</head>\n<body>')}
 </body>
 </html>

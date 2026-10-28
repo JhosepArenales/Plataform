@@ -1,7 +1,7 @@
 :root {
-  --brand: #7B00CD;
-  --brand-600: #6400a8;
-  --brand-50: #f4e9fc;
+  --brand: #9900FF;
+  --brand-600: #7a00cc;
+  --brand-50: #f5e6ff;
   --aqua: #39C2D4;
   --aqua-600: #1f9fb0;
   --text: #2d2a32;
@@ -32,7 +32,7 @@
 
 * { box-sizing: border-box; }
 html { -webkit-text-size-adjust: 100%; }
-body { margin: 0; font-family: 'Nunito', system-ui, -apple-system, 'Segoe UI', sans-serif; color: var(--text); background: var(--bg); line-height: 1.5; font-size: 16px; }
+body { margin: 0; font-family: Arial, Helvetica, sans-serif; color: var(--text); background: var(--bg); line-height: 1.5; font-size: 16px; }
 main { outline: none; min-height: calc(100vh - 64px); }
 h1, h2, h3 { line-height: 1.2; margin: 0 0 .5rem; font-weight: 800; }
 h1 { font-size: clamp(1.5rem, 3vw, 2rem); }
@@ -79,8 +79,8 @@ textarea { resize: vertical; }
 
 .card { background: var(--surface); border-radius: var(--radius); box-shadow: var(--shadow); padding: 1.25rem; border: 1px solid var(--border); }
 .tag { display: inline-block; background: var(--brand-50); color: var(--brand); border-radius: 10px; padding: .1rem .6rem; font-size: .78rem; font-weight: 700; }
-:root[data-theme="dark"] .tag { color: #d6a8ff; }
-@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .tag { color: #d6a8ff; } }
+:root[data-theme="dark"] .tag { color: #dcb3ff; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .tag { color: #dcb3ff; } }
 .eyebrow { text-transform: uppercase; letter-spacing: .06em; font-size: .75rem; font-weight: 800; color: var(--brand); margin-bottom: .25rem; }
 
 /* Barra superior */
@@ -109,7 +109,7 @@ body.admin-mode .topbar { border-bottom: 3px solid var(--brand); }
 .empty-icon, .big-emoji { font-size: 2.5rem; line-height: 1; }
 
 /* Login */
-.login-wrap { min-height: 100vh; display: grid; place-items: center; padding: 16px; background: linear-gradient(160deg, var(--brand) 0%, #4a0080 60%, #2a0049 100%); }
+.login-wrap { min-height: 100vh; display: grid; place-items: center; padding: 16px; background: linear-gradient(160deg, var(--brand) 0%, #5c0099 60%, #2e004d 100%); }
 .login-card { width: min(420px, 100%); display: flex; flex-direction: column; gap: .9rem; padding: 2rem; }
 .field { display: flex; flex-direction: column; gap: .3rem; font-weight: 700; font-size: .9rem; }
 .field.inline { flex-direction: row; align-items: center; gap: .75rem; }
@@ -132,7 +132,7 @@ body.admin-mode .topbar { border-bottom: 3px solid var(--brand); }
 .chip.active { background: var(--brand); border-color: var(--brand); color: #fff; }
 .course-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 1rem; }
 .course-card { padding: 0; overflow: hidden; display: flex; flex-direction: column; color: var(--text); text-decoration: none !important; transition: transform var(--ease), box-shadow var(--ease); }
-.course-card:hover { transform: translateY(-3px); box-shadow: 0 8px 24px rgba(80, 0, 140, .14); }
+.course-card:hover { transform: translateY(-3px); box-shadow: 0 8px 24px rgba(110, 0, 180, .14); }
 .course-cover { height: 96px; display: grid; place-items: center; font-size: 2.8rem; background: linear-gradient(135deg, var(--brand-50), color-mix(in srgb, var(--aqua) 22%, var(--surface))); }
 .course-body { padding: 1rem; display: flex; flex-direction: column; gap: .35rem; flex: 1; }
 .course-body h3 { margin: .2rem 0 0; }
@@ -226,7 +226,7 @@ button.answer:active { transform: scale(.97); }
 .review p { margin: .3rem 0 0; }
 
 /* Juego en vivo */
-.game-bg { min-height: 100vh; background: linear-gradient(160deg, #7B00CD 0%, #46007a 70%); color: #fff; padding: 16px; display: flex; flex-direction: column; }
+.game-bg { min-height: 100vh; background: linear-gradient(160deg, #9900FF 0%, #5c0099 70%); color: #fff; padding: 16px; display: flex; flex-direction: column; }
 .game-bg h1, .game-bg h2 { color: #fff; }
 .join-col { margin: auto; width: min(420px, 100%); display: flex; flex-direction: column; gap: 1.5rem; padding-block: 1rem; }
 .open-games-wrap { display: flex; flex-direction: column; gap: .6rem; }

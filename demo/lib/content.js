@@ -29,7 +29,8 @@ function normalizeTree(tree, areaExists = () => true) {
 }
 
 const XP = { lesson: 10, quizCorrect: 5, quizPerfect: 20, courseCompleted: 50, gamePodium: 30, gamePlayed: 10 };
-const LEVELS = [{ min: 0, name: 'Explorador' }, { min: 100, name: 'Aprendiz' }, { min: 300, name: 'Practicante' }, { min: 700, name: 'Experto' }, { min: 1500, name: 'Maestro' }];
+// Niveles de puntos (XP). No usan los nombres de los niveles IA (Explorador, Practicante, Constructor).
+const LEVELS = [{ min: 0, name: 'Novato' }, { min: 100, name: 'Aprendiz' }, { min: 300, name: 'Avanzado' }, { min: 700, name: 'Experto' }, { min: 1500, name: 'Maestro' }];
 function levelFor(xp) {
   let idx = 0;
   LEVELS.forEach((l, i) => { if (xp >= l.min) idx = i; });

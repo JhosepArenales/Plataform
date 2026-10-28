@@ -133,9 +133,71 @@ async function route(method, path, body) {
   }
   if (method === 'POST' && (r = m(/^\/api\/admin\/users\/([\w-]+)\/role$/))) return rpc('app_admin_set_role', { p_user: idFrom(r), p_role: String(body?.role ?? '') });
 
+  if (pathname.startsWith('/api/ia/')) return routeIa(method, pathname, params, body);
+  if (method === 'POST' && (r = m(/^\/api\/admin\/users\/([\w-]+)\/org-role$/))) {
+    return rpc('app_admin_set_org_role', { p_user: idFrom(r), p_role: body?.org_role || null });
+  }
+
   // El juego en vivo entre celulares llega en la siguiente etapa.
   if (method === 'GET' && pathname === '/api/games') return [];
   if (pathname.startsWith('/api/games')) throw httpError(503, 'El juego en vivo estará disponible en la próxima etapa de la Academia.');
+  throw httpError(404, 'Ruta no encontrada.');
+}
+
+// ---------- Formación IA por niveles ----------
+async function routeIa(method, pathname, params, body) {
+  const uuidOr = (v, status = 404) => { if (!UUID_RE.test(String(v ?? ''))) throw httpError(status, 'No encontrado.'); return v; };
+  const dateOrNull = (v) => (/^\d{4}-\d{2}-\d{2}$/.test(v ?? '') ? v : null);
+  let r;
+  const m = (re) => pathname.match(re);
+  if (method === 'GET' && pathname === '/api/ia/me') return rpc('app_ia_me');
+  if (method === 'GET' && pathname === '/api/ia/current') return rpc('app_ia_current');
+  if (method === 'POST' && pathname === '/api/ia/start') return rpc('app_ia_start');
+  if (method === 'POST' && pathname === '/api/ia/answer') {
+    return rpc('app_ia_answer', { p_attempt: uuidOr(body?.attempt_id), p_position: Number(body?.position), p_choice: Number(body?.choice) });
+  }
+  if (method === 'GET' && pathname === '/api/ia/heatmap') {
+    const area = params.get('area');
+    const role = params.get('role');
+    return rpc('app_ia_heatmap', {
+      p_area: area && UUID_RE.test(area) ? area : null,
+      p_role: ['director', 'lider', 'analista'].includes(role) ? role : null,
+      p_from: dateOrNull(params.get('from')), p_to: dateOrNull(params.get('to')),
+    });
+  }
+  if (method === 'POST' && pathname === '/api/ia/evidences') {
+    return rpc('app_ia_evidence_save', { p_kind: body?.kind, p_title: body?.title, p_hours: Number(body?.hours_month) || 0, p_quality: body?.quality ?? '', p_link: body?.link ?? '' });
+  }
+  if (method === 'GET' && pathname === '/api/ia/evidences') return rpc('app_ia_evidences', { p_status: params.get('status') || null });
+  if (method === 'POST' && (r = m(/^\/api\/ia\/evidences\/([\w-]+)\/review$/))) {
+    return rpc('app_ia_evidence_review', { p_id: uuidOr(r[1]), p_status: body?.status, p_note: body?.note ?? '' });
+  }
+  if (method === 'POST' && pathname === '/api/ia/mentorships') return rpc('app_ia_mentor_request', { p_note: body?.note ?? '' });
+  if (method === 'GET' && pathname === '/api/ia/mentorships') return rpc('app_ia_mentorships');
+  if (method === 'POST' && (r = m(/^\/api\/ia\/mentorships\/([\w-]+)\/assign$/))) {
+    return rpc('app_ia_mentor_assign', { p_id: uuidOr(r[1]), p_mentor: uuidOr(body?.mentor_id, 400) });
+  }
+  if (method === 'POST' && (r = m(/^\/api\/ia\/mentorships\/([\w-]+)\/close$/))) return rpc('app_ia_mentor_close', { p_id: uuidOr(r[1]) });
+  if (method === 'GET' && pathname === '/api/ia/sessions') return rpc('app_ia_sessions');
+  if (method === 'POST' && pathname === '/api/ia/sessions') {
+    return rpc('app_ia_session_save', { p_id: body?.id && UUID_RE.test(body.id) ? body.id : null, p_kind: body?.kind, p_title: body?.title, p_starts_at: body?.starts_at || null, p_description: body?.description ?? '' });
+  }
+  if (method === 'DELETE' && (r = m(/^\/api\/ia\/sessions\/([\w-]+)$/))) return rpc('app_ia_session_delete', { p_id: uuidOr(r[1]) });
+  if (method === 'POST' && (r = m(/^\/api\/ia\/sessions\/([\w-]+)\/signup$/))) return rpc('app_ia_session_signup', { p_session: uuidOr(r[1]), p_pitch: body?.pitch ?? '' });
+  if (method === 'POST' && (r = m(/^\/api\/ia\/sessions\/([\w-]+)\/feedback$/))) {
+    return rpc('app_ia_session_feedback', { p_session: uuidOr(r[1]), p_rating: Number(body?.rating), p_comment: body?.comment ?? '' });
+  }
+  if (method === 'GET' && pathname === '/api/ia/questions') return rpc('app_ia_questions');
+  if (method === 'POST' && pathname === '/api/ia/questions') {
+    return rpc('app_ia_question_save', {
+      p_id: body?.id && UUID_RE.test(body.id) ? body.id : null, p_difficulty: body?.difficulty, p_prompt: body?.prompt ?? '',
+      p_options: Array.isArray(body?.options) ? body.options.map((o) => String(o).trim()).filter(Boolean) : [],
+      p_correct: Number(body?.correct_index), p_explanation: body?.explanation ?? '', p_active: body?.active !== false,
+    });
+  }
+  if (method === 'GET' && pathname === '/api/ia/kpis') return rpc('app_ia_kpis');
+  if (method === 'POST' && pathname === '/api/ia/total') return rpc('app_ia_set_total', { p_total: Number(body?.total) });
+  if (method === 'POST' && pathname === '/api/ia/demo-setup') return rpc('app_ia_demo_setup');
   throw httpError(404, 'Ruta no encontrada.');
 }
 

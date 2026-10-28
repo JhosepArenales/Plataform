@@ -102,6 +102,7 @@ export async function renderHome() {
         h('p', { class: 'muted' }, stats.lessons_done ? `Llevas ${stats.lessons_done} lecciones completadas. ¡Sigue así!` : 'Empieza tu primer curso y gana tus primeros puntos.'),
         h('div', { class: 'xp-bar', role: 'progressbar', 'aria-valuenow': progressPct, 'aria-valuemin': 0, 'aria-valuemax': 100 }, h('span', { style: { width: `${progressPct}%` } })),
         h('p', { class: 'small muted' }, stats.next_at ? `${stats.xp} / ${stats.next_at} XP para el siguiente nivel` : `${stats.xp} XP · nivel máximo`)),
+      globalThis.ACADEMIA_EXT?.homeCard?.(),
       h('a', { class: 'hero-game', href: '#/jugar' }, h('span', { class: 'big-emoji' }, '🎮'), h('strong', {}, 'Unirme a un juego'),
         h('span', { class: 'small' }, openGames.length ? `🟢 ${openGames.length} ${openGames.length === 1 ? 'partida abierta' : 'partidas abiertas'}` : 'Ingresa el PIN'))),
 

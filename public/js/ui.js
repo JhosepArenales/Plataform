@@ -7,7 +7,8 @@ export function h(tag, attrs = {}, ...children) {
     if (k === 'class') el.className = v;
     else if (k === 'html') el.innerHTML = v;
     else if (k.startsWith('on') && typeof v === 'function') el.addEventListener(k.slice(2).toLowerCase(), v);
-    else if (k === 'style' && typeof v === 'object') Object.assign(el.style, v);
+    // Las variables CSS (--algo) solo se aplican con setProperty.
+    else if (k === 'style' && typeof v === 'object') for (const [prop, val] of Object.entries(v)) { if (prop.startsWith('--')) el.style.setProperty(prop, val); else el.style[prop] = val; }
     else if (v === true) el.setAttribute(k, '');
     else el.setAttribute(k, v);
   }

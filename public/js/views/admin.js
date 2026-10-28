@@ -8,7 +8,8 @@ function adminTabs(active) {
   const tab = (href, label, key) => h('a', { href: `#${href}`, class: `tab ${active === key ? 'active' : ''}` }, label);
   return h('div', { class: 'admin-bar' },
     h('span', { class: 'admin-pill' }, 'Modo administrador'),
-    h('nav', { class: 'tabs' }, tab('/admin', 'Panel', 'dash'), tab('/admin/cursos', 'Cursos', 'courses'), tab('/admin/ia', '✨ Crear con IA', 'ai'), tab('/admin/usuarios', 'Personas', 'users'), tab('/admin/areas', 'Áreas', 'areas')));
+    h('nav', { class: 'tabs' }, tab('/admin', 'Panel', 'dash'), tab('/admin/cursos', 'Cursos', 'courses'), tab('/admin/ia', '✨ Crear con IA', 'ai'), tab('/admin/usuarios', 'Personas', 'users'), tab('/admin/areas', 'Áreas', 'areas'),
+      ...(globalThis.ACADEMIA_EXT?.adminTabs ?? []).map((t) => tab(t.href, t.label, t.key))));
 }
 
 // Selector "¿Para quién es este curso?": toda la empresa o una o varias áreas.

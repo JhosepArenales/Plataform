@@ -21,6 +21,8 @@ const routes = [
   { re: /^\/admin\/curso\/([\w-]+)$/, view: renderEditor, admin: true },
   { re: /^\/admin\/usuarios$/, view: renderUsers, admin: true },
   { re: /^\/admin\/areas$/, view: renderAreas, admin: true },
+  // Módulos opcionales (por ejemplo, Formación IA en la versión con Supabase).
+  ...(globalThis.ACADEMIA_EXT?.routes ?? []),
 ];
 
 let renderToken = 0;
@@ -40,6 +42,7 @@ function renderNav() {
     h('nav', { class: 'nav-links' },
       link('/', 'Aprender', (p) => p === '/' || p.startsWith('/curso')),
       link('/jugar', 'Jugar 🎮', (p) => p.startsWith('/jugar')),
+      ...(globalThis.ACADEMIA_EXT?.navLinks ?? []).filter((l) => !l.show || l.show(u)).map((l) => link(l.href, l.label, l.match)),
       u?.role === 'admin' && link('/admin', [h('span', { class: 'lbl-long' }, 'Administrar'), h('span', { class: 'lbl-short' }, 'Admin')], (p) => p.startsWith('/admin'))),
     u && h('div', { class: 'nav-user' },
       h('span', { class: 'avatar', title: u.email }, u.name.slice(0, 1).toUpperCase()),

@@ -1,0 +1,80 @@
+/* Formación IA por niveles */
+.ia-page { gap: 1rem; }
+.ia-chip { display: inline-block; padding: .1rem .55rem; border-radius: 999px; font-size: .78rem; font-weight: 700; background: var(--surface-2); white-space: nowrap; }
+.ia-chip.lvl-explorador { background: #e6f7fa; color: #0b6b78; }
+.ia-chip.lvl-practicante { background: #fff3d6; color: #8a5a00; }
+.ia-chip.lvl-constructor { background: var(--brand-50); color: var(--brand-600); }
+.ia-hero { text-align: center; display: flex; flex-direction: column; align-items: center; gap: .75rem; padding: 2rem 1.25rem; }
+.ia-facts { list-style: none; padding: 0; margin: .25rem 0; display: flex; gap: 1.5rem; justify-content: center; }
+.ia-facts li { display: flex; flex-direction: column; align-items: center; }
+.ia-facts strong { font-size: 1.8rem; color: var(--brand); line-height: 1.1; }
+.ia-levels-row { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: .6rem; width: 100%; }
+.ia-mini { display: flex; flex-direction: column; align-items: center; gap: .15rem; padding: .7rem .4rem; border-radius: var(--radius); background: var(--surface-2); text-align: center; }
+.ia-mini > span:first-child { font-size: 1.6rem; }
+.ia-level-card { display: flex; gap: 1.25rem; align-items: center; }
+.ia-level-card h1 { margin: 0 0 .2rem; }
+.ia-level-icon { display: grid; place-items: center; width: 84px; height: 84px; border-radius: 50%; font-size: 2.6rem; background: var(--brand-50); flex: none; }
+.ia-level-icon.big { width: 110px; height: 110px; font-size: 3.4rem; margin: 0 auto; }
+.lvl-explorador .ia-level-icon, .ia-level-card.lvl-explorador .ia-level-icon { background: #e6f7fa; }
+.ia-level-card.lvl-practicante .ia-level-icon { background: #fff3d6; }
+.ia-next { display: flex; align-items: center; gap: 1rem; flex-wrap: wrap; border-left: 4px solid var(--brand); }
+.ia-next h2 { margin: 0 0 .25rem; font-size: 1.15rem; }
+.ia-next p { margin: 0; }
+.ia-link { color: var(--text); text-decoration: none !important; }
+.ia-route { display: grid; grid-template-columns: max-content 1fr; gap: .5rem 1rem; margin: .5rem 0 1rem; }
+.ia-route dt { font-weight: 700; }
+.ia-route dd { margin: 0; }
+.ia-courses { display: flex; flex-direction: column; gap: .4rem; }
+.ia-courses h3 { margin: 0 0 .2rem; }
+.ia-course { display: flex; gap: .6rem; align-items: center; padding: .55rem .7rem; border-radius: var(--radius); background: var(--surface-2); color: var(--text); text-decoration: none !important; }
+.ia-course:hover { background: var(--brand-50); }
+.ia-list { display: flex; flex-direction: column; gap: .6rem; }
+.ia-list li { display: flex; gap: .7rem; align-items: flex-start; }
+.ia-kind { font-size: 1.3rem; }
+.ia-status { font-size: .78rem; font-weight: 700; white-space: nowrap; padding: .15rem .55rem; border-radius: 999px; background: var(--surface-2); }
+.ia-status.st-validada { background: #dcfce7; color: #166534; }
+.ia-status.st-pendiente { background: #fef3c7; color: #92400e; }
+.ia-status.st-rechazada { background: #fee2e2; color: #991b1b; }
+.ia-form .seg { margin: 0; }
+.seg-opt { flex: 1; display: flex; align-items: center; justify-content: center; gap: .3rem; padding: .4rem .5rem; border-radius: 999px; cursor: pointer; font-weight: 700; font-size: .9rem; color: var(--muted); }
+.seg-opt input { width: auto; margin: 0; accent-color: var(--brand); }
+.seg-opt:has(input:checked) { background: var(--surface); color: var(--text); box-shadow: var(--shadow); }
+.ia-exam { gap: .9rem; }
+.ia-exam-head { display: flex; align-items: center; justify-content: space-between; gap: .75rem; font-weight: 700; }
+.ia-secs { font-size: 1.6rem; color: var(--brand); min-width: 2.5ch; text-align: right; }
+.ia-timer { height: 10px; border-radius: 999px; background: var(--surface-2); overflow: hidden; }
+.ia-timer span { display: block; height: 100%; width: 100%; background: var(--brand); border-radius: 999px; transition: width 200ms linear; }
+.ia-timer.low span { background: var(--bad); }
+.ia-result { text-align: center; display: flex; flex-direction: column; align-items: center; gap: .6rem; padding: 2rem 1.25rem; }
+.ia-result h1 { margin: 0; font-size: 2.2rem; }
+.ia-breakdown { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: .5rem; width: 100%; max-width: 520px; }
+.ia-breakdown div { display: flex; flex-direction: column; gap: .1rem; padding: .6rem; border-radius: var(--radius); background: var(--surface-2); font-size: .85rem; }
+.ia-session { display: flex; gap: 1rem; align-items: flex-start; }
+.ia-session h3 { margin: .3rem 0 .1rem; }
+.ia-date { display: flex; flex-direction: column; align-items: center; justify-content: center; width: 58px; height: 62px; border-radius: 10px; background: var(--brand); color: #fff; flex: none; text-transform: uppercase; font-size: .75rem; }
+.ia-date strong { font-size: 1.5rem; line-height: 1; }
+.ia-stars { display: flex; gap: .25rem; justify-content: center; }
+.ia-stars button { font-size: 2rem; border: 0; background: none; cursor: pointer; color: var(--border); padding: 0 .1rem; }
+.ia-stars button.on { color: #f5b301; }
+.ia-filters { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: .75rem; }
+.ia-heat td, .ia-heat th { text-align: center; }
+.ia-heat td:first-child, .ia-heat th:first-child { text-align: left; }
+.ia-cell { --alpha: 0; }
+.ia-cell strong { display: block; font-size: 1.1rem; }
+.ia-cell span { font-size: .75rem; }
+.ia-cell.lvl-explorador { background: rgba(57, 194, 212, calc(var(--alpha) * .55)); }
+.ia-cell.lvl-practicante { background: rgba(245, 179, 1, calc(var(--alpha) * .55)); }
+.ia-cell.lvl-constructor { background: rgba(153, 0, 255, calc(var(--alpha) * .45)); }
+.ia-subtabs { margin: 0; }
+.ia-evidence { display: flex; gap: 1rem; align-items: center; flex-wrap: wrap; }
+.ia-evidence h3 { margin: .3rem 0; }
+.ia-q summary { cursor: pointer; font-weight: 700; }
+.ia-q[open] summary { margin-bottom: .75rem; }
+.ia-home-card { background: linear-gradient(160deg, #39C2D4, #1f9fb0); }
+.ia-home-card.lvl-none { background: linear-gradient(160deg, #9900FF, #5c0099); }
+@media (max-width: 600px) {
+  .ia-level-card { flex-direction: column; text-align: center; }
+  .ia-route { grid-template-columns: 1fr; }
+  .ia-breakdown { grid-template-columns: 1fr; }
+  .ia-facts { gap: 1rem; }
+}
