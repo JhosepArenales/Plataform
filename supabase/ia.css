@@ -78,3 +78,5 @@
   .ia-breakdown { grid-template-columns: 1fr; }
   .ia-facts { gap: 1rem; }
 }
+.login-error { background: #fee2e2; color: #991b1b; border-radius: var(--radius); padding: .6rem .8rem; font-weight: 700; font-size: .9rem; }
+.login-card .stack.center { align-items: center; text-align: center; }

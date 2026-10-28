@@ -3,11 +3,24 @@
 // validan permisos, respuestas correctas y puntos. Aquí solo queda lo que el
 // navegador hace mejor: leer archivos y armar el borrador básico de un curso.
 
+// Ingreso con la cuenta de Google de la empresa (flujo PKCE: Google devuelve ?code=
+// en la URL y el cliente lo cambia por la sesión al cargar la página).
 const sb = window.supabase.createClient(ACADEMIA_CONFIG.url, ACADEMIA_CONFIG.key, {
-  auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: false },
+  auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true, flowType: 'pkce' },
 });
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const uid = () => crypto.randomUUID();
+
+// Si Google o Supabase devuelven un error (por ejemplo, un correo de otro dominio),
+// se guarda para mostrarlo y se limpia la URL antes de que el enrutador la lea.
+try {
+  const params = new URLSearchParams(location.search || location.hash.replace(/^#\/?/, ''));
+  const authError = params.get('error_description') || params.get('error');
+  if (authError) {
+    window.sessionStorage.setItem('academia.auth_error', authError);
+    history.replaceState(null, '', `${location.pathname}#/login`);
+  }
+} catch { /* sin almacenamiento */ }
 
 // La interfaz decide si hay sesión mirando su token: se alinea con la sesión guardada de Supabase.
 try {
@@ -48,7 +61,12 @@ async function route(method, path, body) {
   const idFrom = (r, i = 1) => { if (!UUID_RE.test(r[i])) throw httpError(404, 'No encontrado.'); return r[i]; };
   let r;
 
-  if (method === 'POST' && pathname === '/api/auth/logout') { await sb.auth.signOut(); return { ok: true }; }
+  if (method === 'POST' && pathname === '/api/auth/logout') {
+    await sb.auth.signOut();
+    // Tras salir no se vuelve a entrar solo: se muestra el botón de ingreso.
+    try { window.sessionStorage.setItem('academia.logged_out', '1'); } catch { /* sin almacenamiento */ }
+    return { ok: true };
+  }
   if (method === 'GET' && pathname === '/api/me') {
     const me = await rpc('app_me');
     return { user: me.user, stats: statsFrom(me.counts) };

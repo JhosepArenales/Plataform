@@ -583,21 +583,19 @@ async function iaRoles() {
 }
 
 // ---------- Registro en la app ----------
-globalThis.ACADEMIA_EXT = {
-  routes: [
+const iaExt = (globalThis.ACADEMIA_EXT ??= { routes: [], navLinks: [], adminTabs: [] });
+iaExt.routes.push(
     { re: /^\/ia$/, view: renderIaHome },
     { re: /^\/ia\/examen$/, view: renderIaExam },
     { re: /^\/ia\/sesiones$/, view: renderIaSessions },
     { re: /^\/ia\/mapa$/, view: () => renderIaHeatmap(false) },
-    { re: /^\/admin\/formacion(?:\/(\w+))?$/, view: renderIaAdmin, admin: true },
-  ],
-  navLinks: [{ href: '/ia', label: 'Nivel IA 🚀', match: (p) => p.startsWith('/ia') }],
-  adminTabs: [{ href: '/admin/formacion', label: 'Formación IA', key: 'formacion' }],
-  homeCard: () => {
-    const lvl = session.user?.ia_level;
-    return h('a', { class: `hero-game ia-home-card lvl-${lvl ?? 'none'}`, href: '#/ia' },
-      h('span', { class: 'big-emoji' }, lvl ? IA_LEVELS[lvl].icon : '🚀'),
-      h('strong', {}, lvl ? `Nivel IA: ${IA_LEVELS[lvl].name}` : 'Descubre tu nivel IA'),
-      h('span', { class: 'small' }, lvl ? 'Ver mi ruta' : 'Examen de 10 preguntas'));
-  },
+    { re: /^\/admin\/formacion(?:\/(\w+))?$/, view: renderIaAdmin, admin: true });
+iaExt.navLinks.push({ href: '/ia', label: 'Nivel IA 🚀', match: (p) => p.startsWith('/ia') });
+iaExt.adminTabs.push({ href: '/admin/formacion', label: 'Formación IA', key: 'formacion' });
+iaExt.homeCard = () => {
+  const lvl = session.user?.ia_level;
+  return h('a', { class: `hero-game ia-home-card lvl-${lvl ?? 'none'}`, href: '#/ia' },
+    h('span', { class: 'big-emoji' }, lvl ? IA_LEVELS[lvl].icon : '🚀'),
+    h('strong', {}, lvl ? `Nivel IA: ${IA_LEVELS[lvl].name}` : 'Descubre tu nivel IA'),
+    h('span', { class: 'small' }, lvl ? 'Ver mi ruta' : 'Examen de 10 preguntas'));
 };

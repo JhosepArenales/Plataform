@@ -55,9 +55,14 @@ docker run -p 3000:3000 -v academia-data:/data -e ANTHROPIC_API_KEY=... academia
 Datos compartidos reales sin mantener un servidor: la interfaz se publica como un solo `index.html` en Netlify y los datos viven en Supabase.
 
 1. Supabase → **SQL Editor** → pega `supabase/schema.sql` completo → **Run** (se puede repetir sin perder datos).
-2. Supabase → **Authentication → Sign In / Providers → Email** → desactiva **Confirm email**.
+2. **Ingreso con la cuenta de Google de la empresa** (no hay pantalla de correo y contraseña):
+   - Google Cloud Console → *Pantalla de consentimiento OAuth* con tipo **Interno** (solo cuentas de la organización) → *Credenciales* → *ID de cliente OAuth* de tipo *Aplicación web* con la URI de redirección `https://<proyecto>.supabase.co/auth/v1/callback`.
+   - Supabase → **Authentication → Sign In / Providers → Google**: activar y pegar el ID y el secreto del cliente.
+   - Supabase → **Authentication → URL Configuration**: *Site URL* y *Redirect URLs* con la dirección pública de Netlify.
 3. `npm run build:supabase` → arrastra `supabase/dist/` a [app.netlify.com/drop](https://app.netlify.com/drop).
-4. La **primera cuenta** que se crea queda como administradora. Solo se aceptan correos `@plataform.com` (`app_config.allowed_domain`).
+4. La **primera cuenta** que entra queda como administradora. Solo se aceptan correos `@plataform.com` (`app_config.allowed_domain`, validado también en la base).
+
+Las cuentas de prueba (por ejemplo `demo.explorador@plataform.com`) entran con contraseña en `#/acceso-demo`; esa ruta no aparece en la interfaz. Para que funcione, deja activo el proveedor *Email* con **Confirm email** desactivado.
 
 Seguridad: el navegador no tiene acceso a las tablas; todo pasa por funciones `app_*` que validan permisos, corrigen los quizzes y asignan los puntos en la base de datos. La URL y la clave publicable están en `supabase/config.js`.
 
