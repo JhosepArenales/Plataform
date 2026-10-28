@@ -3,15 +3,30 @@
 // validan permisos, respuestas correctas y puntos. Aquí solo queda lo que el
 // navegador hace mejor: leer archivos y armar el borrador básico de un curso.
 
+// Llave propia de este navegador: identifica a quien entra sin capa de ingreso.
+// Viaja en cada consulta (encabezado x-academia-device); la base guarda solo su huella.
+const DEVICE_KEY = 'academia.dispositivo';
+const deviceToken = (() => {
+  const fresh = () => Array.from(crypto.getRandomValues(new Uint8Array(32)), (b) => b.toString(16).padStart(2, '0')).join('');
+  try {
+    let t = window.localStorage.getItem(DEVICE_KEY);
+    if (!t) { t = fresh(); window.localStorage.setItem(DEVICE_KEY, t); }
+    return t;
+  } catch { return fresh(); }
+})();
+
 const sb = window.supabase.createClient(ACADEMIA_CONFIG.url, ACADEMIA_CONFIG.key, {
   auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: false },
+  global: { headers: { 'x-academia-device': deviceToken } },
 });
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const uid = () => crypto.randomUUID();
 
 // La interfaz decide si hay sesión mirando su token: se alinea con la sesión guardada de Supabase.
 try {
-  if (Object.keys(window.localStorage).some((k) => k.startsWith('sb-') && k.endsWith('-auth-token'))) window.localStorage.setItem('academia.token', 'supabase');
+  if (window.localStorage.getItem('academia.registrado') || Object.keys(window.localStorage).some((k) => k.startsWith('sb-') && k.endsWith('-auth-token'))) {
+    window.localStorage.setItem('academia.token', 'supabase');
+  }
 } catch { /* sin almacenamiento: se pedirá ingresar */ }
 
 async function rpc(name, args = {}) {

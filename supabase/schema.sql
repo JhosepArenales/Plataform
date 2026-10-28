@@ -45,6 +45,16 @@ create table if not exists public.profiles (
 alter table public.profiles add column if not exists org_role text check (org_role in ('director', 'lider', 'analista'));
 alter table public.profiles add column if not exists is_demo boolean not null default false;
 
+-- Entrada sin capa de ingreso: cada navegador tiene una llave propia (se guarda solo
+-- su huella SHA-256). Las personas que entran así no tienen cuenta de Supabase Auth,
+-- por eso el perfil ya no exige una fila en auth.users.
+alter table public.profiles drop constraint if exists profiles_id_fkey;
+create table if not exists public.app_devices (
+  token_hash text primary key,
+  user_id uuid not null references public.profiles (id) on delete cascade,
+  created_at timestamptz not null default now()
+);
+
 -- Las lecciones se guardan dentro del curso (sin las respuestas correctas).
 create table if not exists public.courses (
   id uuid primary key default gen_random_uuid(),
@@ -130,21 +140,25 @@ where not exists (select 1 from public.areas);
 -- ---------------------------------------------------------------- Cuentas nuevas
 
 -- Al crear una cuenta se crea su perfil. Rechaza correos de otros dominios.
+-- Rol inicial: la primera persona y los correos de admin_emails entran como administradores.
+create or replace function public._initial_role(p_email text) returns text
+language sql stable security definer set search_path = public as $$
+  select case when not exists (select 1 from profiles)
+    or lower(p_email) = any (string_to_array(replace(lower(coalesce((select value from app_config where key = 'admin_emails'), '')), ' ', ''), ','))
+    then 'admin' else 'learner' end
+$$;
+
 create or replace function public.handle_new_user() returns trigger
 language plpgsql security definer set search_path = public as $$
 declare
   v_domain text := lower(coalesce((select value from app_config where key = 'allowed_domain'), ''));
-  v_admins text[] := string_to_array(replace(lower(coalesce((select value from app_config where key = 'admin_emails'), '')), ' ', ''), ',');
   v_email text := lower(new.email);
 begin
   if v_domain <> '' and v_email not like ('%@' || v_domain) then
     raise exception 'Solo se permiten correos @%', v_domain;
   end if;
   insert into profiles (id, email, name, role)
-  values (
-    new.id, v_email,
-    coalesce(nullif(trim(new.raw_user_meta_data ->> 'name'), ''), split_part(v_email, '@', 1)),
-    case when not exists (select 1 from profiles) or v_email = any (v_admins) then 'admin' else 'learner' end);
+  values (new.id, v_email, coalesce(nullif(trim(new.raw_user_meta_data ->> 'name'), ''), split_part(v_email, '@', 1)), _initial_role(v_email));
   return new;
 end $$;
 
@@ -155,11 +169,21 @@ create trigger on_auth_user_created after insert on auth.users
 -- ---------------------------------------------------------------- Ayudantes internos
 
 -- Los errores usan códigos PTxxx: Supabase los devuelve con ese estado HTTP.
+-- Quién llama: la sesión de Supabase Auth (cuentas con contraseña) o, si no hay,
+-- la llave del navegador que llega en el encabezado x-academia-device.
+create or replace function public._uid() returns uuid
+language sql stable security definer set search_path = public as $$
+  select coalesce(auth.uid(), (
+    select d.user_id from app_devices d
+    where d.token_hash = encode(sha256(convert_to(coalesce(current_setting('request.headers', true)::json ->> 'x-academia-device', ''), 'UTF8')), 'hex')
+      and length(coalesce(current_setting('request.headers', true)::json ->> 'x-academia-device', '')) >= 32))
+$$;
+
 create or replace function public._me() returns public.profiles
 language plpgsql stable security definer set search_path = public as $$
 declare r profiles;
 begin
-  select * into r from profiles where id = auth.uid() and active;
+  select * into r from profiles where id = _uid() and active;
   if r.id is null then raise exception 'Tu sesión expiró. Vuelve a ingresar.' using errcode = 'PT401'; end if;
   return r;
 end $$;
@@ -1256,6 +1280,27 @@ begin
   return jsonb_build_object('ready', v_ready, 'missing', v_missing);
 end $$;
 
+-- ---------------------------------------------------------------- Entrada sin capa de ingreso
+
+-- Registra el navegador con su llave y crea la persona (sin correo real ni contraseña).
+-- Si la llave ya existe, no crea nada.
+create or replace function public.app_guest_join(p_name text, p_token text) returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare
+  v_hash text := encode(sha256(convert_to(coalesce(p_token, ''), 'UTF8')), 'hex');
+  v_name text := regexp_replace(trim(coalesce(p_name, '')), '\s+', ' ', 'g');
+  v_id uuid := gen_random_uuid();
+  v_email text;
+begin
+  if length(coalesce(p_token, '')) < 32 then raise exception 'Llave del navegador inválida.' using errcode = 'PT400'; end if;
+  if exists (select 1 from app_devices where token_hash = v_hash) then return jsonb_build_object('ok', true); end if;
+  if length(v_name) < 2 or length(v_name) > 60 then raise exception 'Escribe tu nombre (2 a 60 caracteres).' using errcode = 'PT400'; end if;
+  v_email := format('invitado.%s@%s', left(replace(v_id::text, '-', ''), 12), coalesce(nullif((select value from app_config where key = 'allowed_domain'), ''), 'plataform.com'));
+  insert into profiles (id, email, name, role) values (v_id, v_email, v_name, _initial_role(v_email));
+  insert into app_devices (token_hash, user_id) values (v_hash, v_id);
+  return jsonb_build_object('ok', true);
+end $$;
+
 -- ---------------------------------------------------------------- Permisos
 
 -- Tablas cerradas al navegador: sin políticas RLS, nadie las lee directamente.
@@ -1277,9 +1322,12 @@ alter table public.ia_mentorships enable row level security;
 alter table public.ia_sessions enable row level security;
 alter table public.ia_session_signups enable row level security;
 alter table public.ia_session_feedback enable row level security;
+alter table public.app_devices enable row level security;
 revoke all on all tables in schema public from anon, authenticated;
 
--- Solo las funciones app_* quedan disponibles, y solo para personas con sesión.
+-- Solo las funciones app_* quedan disponibles. También para "anon": quien entra sin
+-- capa de ingreso se identifica con la llave de su navegador; cada función valida
+-- quién llama con _me() y rechaza a quien no tenga sesión ni llave registrada.
 do $$
 declare f record;
 begin
@@ -1290,7 +1338,7 @@ begin
   loop
     execute format('revoke all on function %s from public, anon, authenticated', f.sig);
     if f.proname like 'app\_%' then
-      execute format('grant execute on function %s to authenticated', f.sig);
+      execute format('grant execute on function %s to anon, authenticated', f.sig);
     end if;
   end loop;
 end $$;

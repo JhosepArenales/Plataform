@@ -158,3 +158,26 @@ test('crear un curso desde texto pegado y desde un Word, en modo básico', async
   assert.deepEqual(r.course.sources.map((s) => s.name).sort(), ['Manual', 'manual.docx']);
   assert.equal((await ana.call('/api/sources/text', { method: 'POST', body: { name: 'x', text: LONG_TEXT } })).status, 403);
 });
+
+test('entrada sin capa de ingreso: la llave del navegador identifica a la persona', async () => {
+  const v = await browser(null, { auth: false });
+  assert.equal((await v.call('/api/me')).status, 401, 'sin registrar la llave no entra');
+  const token = v.run('deviceToken');
+  assert.ok(/^[0-9a-f]{64}$/.test(token));
+  const join = await v.sb.rpc('app_guest_join', { p_name: '  Visitante   Uno ', p_token: token });
+  assert.equal(join.error, null);
+  const me = await ok(v.call('/api/me'));
+  assert.equal(me.user.name, 'Visitante Uno');
+  assert.equal(me.user.role, 'learner', 'la administración ya existe');
+  assert.match(me.user.email, /^invitado\.[0-9a-f]{12}@plataform\.com$/);
+  assert.equal((await v.sb.rpc('app_guest_join', { p_name: 'Otro nombre', p_token: token })).error, null, 'repetir no crea otra persona');
+  assert.equal((await ok(v.call('/api/me'))).user.name, 'Visitante Uno');
+
+  const corta = await v.sb.rpc('app_guest_join', { p_name: 'Pirata', p_token: 'corta' });
+  assert.equal(corta.error.code, 'PT400');
+  const otro = await browser(null, { auth: false });
+  assert.equal((await otro.call('/api/me')).status, 401, 'otro navegador no entra con la llave ajena');
+  await assert.rejects(fake.asUser(null, 'select * from app_devices'), /permission denied/);
+  const raw = await fake.db.query('select token_hash from app_devices');
+  assert.ok(raw.rows.every((r) => r.token_hash !== token), 'la base guarda solo la huella de la llave');
+});

@@ -52,7 +52,7 @@ export async function startFakeSupabase() {
     return argTypes.get(fn);
   }
 
-  async function callRpc(fn, args, userId) {
+  async function callRpc(fn, args, userId, headers = {}) {
     const sig = await signature(fn);
     if (!sig) return [404, { code: 'PGRST202', message: `Could not find the function public.${fn}`, details: null, hint: null }];
     const values = [];
@@ -69,6 +69,7 @@ export async function startFakeSupabase() {
     try {
       const result = await db.transaction(async (tx) => {
         await tx.query(`select set_config('request.jwt.claim.sub', $1, true)`, [userId ?? '']);
+        await tx.query(`select set_config('request.headers', $1, true)`, [JSON.stringify(headers)]);
         await tx.exec(`set local role ${userId ? 'authenticated' : 'anon'}`);
         return tx.query(`select public.${fn}(${parts.join(', ')}) as result`, values);
       });
@@ -109,7 +110,7 @@ export async function startFakeSupabase() {
     }
     if (url.pathname === '/auth/v1/logout') { tokens.delete(bearer); return [204, null]; }
     const rpcMatch = url.pathname.match(/^\/rest\/v1\/rpc\/(\w+)$/);
-    if (req.method === 'POST' && rpcMatch) return callRpc(rpcMatch[1], body ?? {}, userId);
+    if (req.method === 'POST' && rpcMatch) return callRpc(rpcMatch[1], body ?? {}, userId, req.headers);
     return [404, { message: 'not found' }];
   }
 
@@ -150,19 +151,19 @@ function memoryStorage() {
 }
 
 // Un "navegador" por persona: supabase/backend.js con su propio cliente y sesión.
-export async function openBrowser(fake, email, { name = 'Persona', create = true, password = 'clave-segura-1' } = {}) {
+export async function openBrowser(fake, email, { name = 'Persona', create = true, password = 'clave-segura-1', auth: useAuth = true } = {}) {
   const window = { supabase: supabaseJs, localStorage: memoryStorage(), fetch: globalThis.fetch };
   const ctx = vm.createContext({ window, crypto: globalThis.crypto, Response, URL, URLSearchParams, TextDecoder, FormData, File, Blob, DecompressionStream, console });
   vm.runInContext(read('supabase/config.js').replace(/url: '[^']+'/, `url: '${fake.url}'`).replace(/^const /m, 'var '), ctx);
   vm.runInContext(read('demo/lib/content.js'), ctx);
   vm.runInContext(read('supabase/backend.js'), ctx);
   const sb = vm.runInContext('sb', ctx);
-  const auth = create
+  const auth = !useAuth ? null : create
     ? await sb.auth.signUp({ email, password, options: { data: { name } } })
     : await sb.auth.signInWithPassword({ email, password });
   const call = async (p, { method = 'GET', body } = {}) => {
     const res = await window.fetch(p, { method, body: body instanceof FormData ? body : body === undefined ? undefined : JSON.stringify(body) });
     return { status: res.status, data: await res.json() };
   };
-  return { call, sb, auth, id: auth.data?.user?.id };
+  return { call, sb, auth, id: auth?.data?.user?.id, run: (code) => vm.runInContext(code, ctx) };
 }

@@ -55,11 +55,11 @@ docker run -p 3000:3000 -v academia-data:/data -e ANTHROPIC_API_KEY=... academia
 Datos compartidos reales sin mantener un servidor: la interfaz se publica como un solo `index.html` en Netlify y los datos viven en Supabase.
 
 1. Supabase → **SQL Editor** → pega `supabase/schema.sql` completo → **Run** (se puede repetir sin perder datos).
-2. Supabase → **Authentication → Sign In / Providers → Email** → desactiva **Confirm email**.
+2. (Solo para las cuentas con contraseña de `#/acceso-demo`) Supabase → **Authentication → Sign In / Providers → Email** → desactiva **Confirm email**.
 3. `npm run build:supabase` → arrastra `supabase/dist/` a [app.netlify.com/drop](https://app.netlify.com/drop).
 4. La **primera cuenta** que entra queda como administradora. Solo se aceptan correos `@plataform.com` (`app_config.allowed_domain`, validado también en la base).
 
-**Sin capa de ingreso (modo pruebas):** la Academia abre directo. La primera vez pregunta solo el nombre y crea por detrás una cuenta propia de ese navegador (`invitado.xxxx@plataform.com` con clave aleatoria guardada en el navegador); las siguientes veces entra sin preguntar. No hay botón "Salir". Las cuentas con contraseña (administración, `demo.*@`) entran por `#/acceso-demo`. Al publicar con el Plataform Deployer, el acceso lo pone el Deployer.
+**Sin capa de ingreso (modo pruebas):** la Academia abre directo. La primera vez pregunta solo el nombre; cada navegador queda identificado con una llave propia (guardada en el navegador; la base guarda solo su huella SHA-256 en `app_devices`). No usa Supabase Auth para estas personas: no hay correos, confirmaciones ni límites de envío. No hay botón "Salir". Las cuentas con contraseña (administración, `demo.*@`) entran por `#/acceso-demo`. Al publicar con el Plataform Deployer, el acceso lo pone el Deployer.
 
 Seguridad: el navegador no tiene acceso a las tablas; todo pasa por funciones `app_*` que validan permisos, corrigen los quizzes y asignan los puntos en la base de datos. La URL y la clave publicable están en `supabase/config.js`.
 

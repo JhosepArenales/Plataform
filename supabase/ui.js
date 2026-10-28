@@ -67,37 +67,19 @@ function renderPasswordLogin() {
   return h('div', { class: 'login-wrap' }, form);
 }
 
-// Entrada sin capa de ingreso: la primera vez solo pregunta el nombre y crea por
-// detrás una cuenta propia de este navegador (correo interno invitado.xxxx@ y clave
-// aleatoria guardados aquí); las siguientes veces entra directo.
-const GUEST_KEY = 'academia.invitado';
-const readGuest = () => { try { return JSON.parse(localStorage.getItem(GUEST_KEY)); } catch { return null; } };
-
+// Entrada sin capa de ingreso: la primera vez solo pregunta el nombre y registra la
+// llave de este navegador; después entra directo. No usa correo ni contraseña.
 function renderLogin() {
   const status = h('div', { class: 'stack center' }, h('div', { class: 'spinner' }), h('p', { class: 'muted' }, 'Abriendo la Academia…'));
   const card = h('div', { class: 'login-card card' },
     h('div', { class: 'brand brand-lg' }, h('span', { class: 'brand-mark' }, 'P'), h('span', {}, 'Academia')), status);
   const enter = async () => {
+    try { localStorage.setItem('academia.registrado', '1'); } catch { /* sin almacenamiento */ }
     session.token = 'supabase';
     afterLogin((await api('/api/me')).user);
   };
-  // Entra con la cuenta guardada de este navegador; si aún no existe, la crea.
-  const enterAsGuest = async (guest) => {
-    let { error } = await sb.auth.signInWithPassword({ email: guest.email, password: guest.password });
-    if (error && /invalid login credentials/i.test(error.message)) {
-      const created = await sb.auth.signUp({ email: guest.email, password: guest.password, options: { data: { name: guest.name } } });
-      if (created.error) throw new Error(authMessage(created.error));
-      if (created.data.session) return enter();
-      error = { message: 'Email not confirmed' };
-    }
-    if (error && /email not confirmed/i.test(error.message)) {
-      throw new Error('Falta un ajuste en Supabase: desactiva "Confirm email" (Authentication → Sign In / Providers → Email) y vuelve a intentar.');
-    }
-    if (error) throw new Error(authMessage(error));
-    return enter();
-  };
-  const askName = (message, value = '') => {
-    const name = h('input', { name: 'name', required: true, minlength: 2, maxlength: 60, autocomplete: 'name', placeholder: 'Nombre y apellido', 'aria-label': 'Tu nombre', value });
+  const askName = (message) => {
+    const name = h('input', { name: 'name', required: true, minlength: 2, maxlength: 60, autocomplete: 'name', placeholder: 'Nombre y apellido', 'aria-label': 'Tu nombre' });
     const go = h('button', { class: 'btn btn-primary btn-block btn-lg', type: 'submit' }, 'Empezar');
     const form = h('form', { class: 'stack' },
       h('h1', {}, '¡Bienvenido! 👋'),
@@ -109,28 +91,23 @@ function renderLogin() {
     form.addEventListener('submit', async (e) => {
       e.preventDefault();
       if (name.value.trim().length < 2) return toast('Escribe tu nombre.', 'error');
-      const bytes = crypto.getRandomValues(new Uint8Array(18));
-      const guest = {
-        email: `invitado.${crypto.randomUUID().slice(0, 12)}@${ACADEMIA_CONFIG.domain}`,
-        password: btoa(String.fromCharCode(...bytes)),
-        ...readGuest(),
-        name: name.value.trim(),
-      };
-      // Se guarda antes de crear la cuenta: si algo falla, el siguiente intento usa la misma.
-      try { localStorage.setItem(GUEST_KEY, JSON.stringify(guest)); } catch { /* sin almacenamiento: se pedirá el nombre de nuevo */ }
-      try { await busy(go, () => enterAsGuest(guest), 'Entrando…'); } catch (err) { askName(err.message, guest.name); }
+      try {
+        await busy(go, async () => {
+          await rpc('app_guest_join', { p_name: name.value.trim(), p_token: deviceToken });
+          await enter();
+        }, 'Entrando…');
+      } catch (err) { toast(err.message, 'error'); }
     });
     status.replaceChildren(form);
     name.focus();
   };
   (async () => {
-    try {
-      const { data } = await sb.auth.getSession();
-      if (data.session) return await enter();
-      const saved = readGuest();
-      if (saved) return await enterAsGuest(saved);
-      askName();
-    } catch (err) { askName(err.message, readGuest()?.name ?? ''); }
+    // Con sesión (cuentas con contraseña) o con la llave ya registrada, entra directo.
+    const { error } = await sb.rpc('app_me');
+    if (!error) {
+      try { return await enter(); } catch (err) { return askName(err.message); }
+    }
+    askName(error.code && !/^PT401$|^42501$/.test(error.code) ? 'No pudimos conectar con la Academia. Recarga la página.' : null);
   })();
   return h('div', { class: 'login-wrap' }, card);
 }
