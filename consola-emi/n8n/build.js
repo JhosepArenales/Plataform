@@ -5,7 +5,15 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 
-const LIB_SRC = fs.readFileSync(path.join(__dirname, 'src', 'lib.js'), 'utf8').split('\nif (typeof module')[0].trim();
+const strip = (f) => fs.readFileSync(f, 'utf8').split('\nif (typeof module')[0].trim();
+const LIB_SRC = strip(path.join(__dirname, 'src', 'lib.js'));
+const WA_SRC = strip(path.join(__dirname, 'src', 'wa.js'));
+// Motor de Emi completo (los mismos archivos de la consola), aislado para que sus envoltorios UMD
+// se registren en un objeto local y no dependan de module/require del entorno de n8n.
+const ROOT = path.join(__dirname, '..');
+const ENGINE_FILES = ['js/engine/menus.js', 'js/engine/engine.js', 'js/engine/holidays.js', 'js/data/faqs-base.js', 'js/adapters/remote.js'];
+const ENGINE_BUNDLE = 'const __EMI = (function () {\n  var module, exports, define, require;\n  var self = {};\n' +
+  ENGINE_FILES.map((f) => '// ── ' + f + ' ──\n' + fs.readFileSync(path.join(ROOT, f), 'utf8')).join('\n') + '\n  return self;\n})();';
 
 function uid(seed) {
   const h = crypto.createHash('sha1').update(seed).digest('hex');
@@ -19,8 +27,8 @@ const HEADER = [
   "const BODY = $('Webhook').first().json.body || {};"
 ].join('\n');
 
-function code(wf, name, body, pos) {
-  return { id: uid(wf + name), name, type: 'n8n-nodes-base.code', typeVersion: 2, position: pos, parameters: { jsCode: HEADER + '\n\n// ── ' + name + ' ──\n' + body.trim() + '\n' } };
+function code(wf, name, body, pos, extra) {
+  return { id: uid(wf + name), name, type: 'n8n-nodes-base.code', typeVersion: 2, position: pos, parameters: { jsCode: HEADER + (extra ? '\n' + extra : '') + '\n\n// ── ' + name + ' ──\n' + body.trim() + '\n' } };
 }
 function webhook(wf, p, pos) {
   return {
@@ -212,8 +220,132 @@ return [{ json: { respuesta: { ticket_id: String(j.id), status: 'created' } } }]
   ]);
 }
 
+function buildWhatsapp(cfg) {
+  const W = 'whatsapp';
+  const WAX = WA_SRC;
+  const hook = webhook(W, 'emi/whatsapp-' + cfg.whatsapp.webhookToken, [0, 300]);
+  // Evolution no envía cabeceras de autenticación: el token secreto va en la ruta. Se responde 200 al instante.
+  hook.parameters.authentication = 'none';
+  hook.parameters.responseMode = 'onReceived';
+  delete hook.credentials;
+  const evo = Object.assign({
+    id: uid(W + 'Evolution'), name: 'Evolution · enviar', type: 'n8n-nodes-base.httpRequest', typeVersion: 4.2, position: [2420, 200],
+    parameters: {
+      method: 'POST', url: '={{ $json.url }}', authentication: 'genericCredentialType', genericAuthType: 'httpHeaderAuth',
+      sendBody: true, specifyBody: 'json', jsonBody: '={{ JSON.stringify($json.body) }}', options: { timeout: 15000 }
+    },
+    credentials: { httpHeaderAuth: { id: '', name: 'Evolution · API key (apikey)' } }
+  }, RETRY);
+  return workflow('Emi · whatsapp (Evolution API)', [
+    hook,
+    config(W, pick(cfg, ['whatsapp', 'emi']), [220, 300]),
+    code(W, 'Interpretar mensaje', `
+const WA = emiWa();
+const faltan = L.missingConfig(CFG, 'whatsapp');
+if (faltan.length) return [{ json: { seguir: false, motivo: 'not_configured', faltan } }];
+const msg = WA.parseEvolution(BODY);
+if (msg.ignore) return [{ json: { seguir: false, motivo: msg.ignore } }];
+const store = $getWorkflowStaticData('global');
+const now = new Date();
+const conv = WA.getConv(store, msg.phone, now, CFG.whatsapp);
+const decision = WA.decide(conv, msg, now, CFG.whatsapp);
+if (decision.accion === 'ignorar') return [{ json: { seguir: false, motivo: decision.motivo } }];
+conv.lastAt = now.getTime();
+return [{ json: { seguir: true, msg, decision, searchBody: WA.contactSearchBody(msg.phone) } }];`, [440, 300], WAX),
+    ifNode(W, '¿Seguir?', '$json.seguir', [660, 300]),
+    hubspot(W, 'HubSpot · buscar contacto', 'https://api.hubapi.com/crm/v3/objects/contacts/search', '$json.searchBody', [880, 200]),
+    code(W, '¿Crear contacto?', `
+const WA = emiWa();
+const j = $input.first().json;
+const msg = $('Interpretar mensaje').first().json.msg;
+if (L.isHttpError(j)) return [{ json: { contactId: null, crear: false, aviso: 'busqueda_fallo' } }];
+if (Array.isArray(j.results) && j.results[0]) return [{ json: { contactId: String(j.results[0].id), crear: false } }];
+return [{ json: { contactId: null, crear: !!CFG.whatsapp.crearContacto, createBody: WA.contactCreateBody(msg.phone, msg.pushName) } }];`, [1100, 200], WAX),
+    ifNode(W, '¿Crear?', '$json.crear', [1320, 200]),
+    hubspot(W, 'HubSpot · crear contacto', 'https://api.hubapi.com/crm/v3/objects/contacts', '$json.createBody', [1540, 100]),
+    code(W, 'Contacto listo', `
+const j = $input.first().json;
+// Llega desde "¿Crear contacto?" (ya trae contactId) o desde "HubSpot · crear contacto" (trae id o error).
+if (j.contactId !== undefined) return [{ json: { contactId: j.contactId } }];
+return [{ json: { contactId: L.isHttpError(j) || !j.id ? null : String(j.id) } }];`, [1760, 200]),
+    code(W, 'Emi responde', `
+const WA = emiWa();
+const E = __EMI.EmiEngine, B = __EMI.EmiBase, H = __EMI.EmiHolidays, R = __EMI.EmiRemote;
+const C = CFG.whatsapp;
+const prev = $('Interpretar mensaje').first().json;
+const msg = prev.msg, dec = prev.decision;
+const contactId = $('Contacto listo').first().json.contactId || null;
+const now = new Date();
+const store = $getWorkflowStaticData('global');
+const conv = WA.getConv(store, msg.phone, now, C);
+const registro = [{ autor: dec.autor || 'Cliente', text: msg.text || '[' + msg.tipo + ']', ts: msg.ts }];
+let replies = [];
+if (dec.accion === 'responder') {
+  conv.engineState = conv.engineState || E.newState();
+  const helpers = this.helpers;
+  // Las consultas reutilizan los webhooks emi/* (Metabase, HubSpot), con el mismo secreto.
+  const client = R.createClient({
+    base: C.emiWebhookBase.replace(/\\/+$/, '') + '/webhook/emi', timeoutMs: 8000, retries: 1,
+    fetch: async (url, init) => {
+      const r = await helpers.httpRequest({ method: 'POST', url, headers: { 'Content-Type': 'application/json', 'X-Emi-Secret': C.emiSecret },
+        body: JSON.parse(init.body), json: true, returnFullResponse: true, ignoreHttpStatusErrors: true, timeout: 8000 });
+      return { status: r.statusCode, ok: r.statusCode >= 200 && r.statusCode < 300, json: async () => (typeof r.body === 'string' ? JSON.parse(r.body) : r.body) };
+    }
+  });
+  const sink = client.escalationSink();
+  const adapters = {
+    client: client.clientLookup(), operation: client.operationLookup(),
+    escalation: { source: 'remoto', escalate: (p) => sink.escalate(Object.assign({}, p, {
+      conversationId: conv.sessionId,
+      cliente: Object.assign({}, p.cliente || {}, contactId && !(p.cliente && p.cliente.id) ? { id: contactId } : {}),
+      resumen: 'Canal: WhatsApp ' + WA.maskPhone(msg.phone) + '\\n' + p.resumen
+    })) }
+  };
+  const y = now.getFullYear();
+  const holidays = H.colombianHolidays(y).concat(H.colombianHolidays(y + 1)).map((h) => h.fecha);
+  const faqs = B.BASE_DEFAULT.map((f) => Object.assign({}, f, { base_id: f.id, activa: true }));
+  let res;
+  if (!msg.text) res = { replies: ['Por ahora solo puedo leer mensajes de texto 🙏. Escríbeme tu consulta, por favor.'], state: conv.engineState, escalation: null };
+  else res = await E.respond(msg.text, conv.engineState, { config: CFG.emi, faqs, holidays, now, conversationId: conv.sessionId, adapters });
+  conv.engineState = res.state;
+  replies = res.replies;
+  if (res.escalation && res.escalation.ticketId) conv.humanUntil = now.getTime() + C.silencioHoras * 3600000;
+  WA.rememberBot(conv, replies, now);
+  const nombre = (CFG.emi && CFG.emi.nombre) || 'Emi';
+  replies.forEach((r, i) => registro.push({ autor: nombre, text: r, ts: new Date(now.getTime() + i + 1).toISOString() }));
+  if (res.escalation) registro.push({ autor: 'Sistema', text: res.escalation.ticketId ? 'Escalado a asesor · ticket ' + res.escalation.ticketId + ' · motivo: ' + res.escalation.motivo : 'No se pudo crear el ticket de escalamiento', ts: new Date(now.getTime() + 50).toISOString() });
+}
+conv.lastAt = now.getTime();
+WA.prune(store, now, C.diasRetencionEstado);
+return [{ json: { phone: msg.phone, envios: WA.sendItems(C, msg.phone, replies), registro, contactId } }];`, [1980, 300], WAX + '\n' + ENGINE_BUNDLE),
+    code(W, 'Preparar envíos', `
+const envios = $input.first().json.envios || [];
+if (!envios.length) return [{ json: { sinEnvios: true } }];
+return envios.map((e) => ({ json: e }));`, [2200, 300]),
+    ifNode(W, '¿Hay envíos?', '$json.sinEnvios !== true', [2420, 400]),
+    evo,
+    code(W, 'Armar registro', `
+const WA = emiWa();
+const base = $('Emi responde').first().json;
+const registro = base.registro.slice();
+const fallos = $input.all().filter((i) => i.json && i.json.error !== undefined && i.json.key === undefined).length;
+if (fallos) registro.push({ autor: 'Sistema', text: 'No se pudieron enviar ' + fallos + ' mensaje(s) por WhatsApp (Evolution API).', ts: new Date().toISOString() });
+return [{ json: { commBody: WA.communicationsBody(registro, base.contactId, CFG.whatsapp) } }];`, [2640, 300], WAX),
+    hubspot(W, 'HubSpot · registrar conversación', 'https://api.hubapi.com/crm/v3/objects/communications/batch/create', '$json.commBody', [2860, 300])
+  ], [
+    ['Webhook', 'Config'], ['Config', 'Interpretar mensaje'], ['Interpretar mensaje', '¿Seguir?'],
+    ['¿Seguir?', 'HubSpot · buscar contacto', 0],
+    ['HubSpot · buscar contacto', '¿Crear contacto?'], ['¿Crear contacto?', '¿Crear?'],
+    ['¿Crear?', 'HubSpot · crear contacto', 0], ['¿Crear?', 'Contacto listo', 1],
+    ['HubSpot · crear contacto', 'Contacto listo'], ['Contacto listo', 'Emi responde'],
+    ['Emi responde', 'Preparar envíos'], ['Preparar envíos', '¿Hay envíos?'],
+    ['¿Hay envíos?', 'Evolution · enviar', 0], ['¿Hay envíos?', 'Armar registro', 1],
+    ['Evolution · enviar', 'Armar registro'], ['Armar registro', 'HubSpot · registrar conversación']
+  ]);
+}
+
 function buildAll(cfg) {
-  return { 'emi-client-lookup': buildClientLookup(cfg), 'emi-operation-lookup': buildOperationLookup(cfg), 'emi-escalate': buildEscalate(cfg) };
+  return { 'emi-client-lookup': buildClientLookup(cfg), 'emi-operation-lookup': buildOperationLookup(cfg), 'emi-escalate': buildEscalate(cfg), 'emi-whatsapp': buildWhatsapp(cfg) };
 }
 
 module.exports = { buildAll };

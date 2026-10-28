@@ -7,6 +7,7 @@ Tres flujos listos para importar en `n8n/workflows/`. Se generan con `node n8n/b
 | `emi-client-lookup.json` | `POST /webhook/emi/client-lookup` | Metabase 2346 → (opcional) contacto de HubSpot por email |
 | `emi-operation-lookup.json` | `POST /webhook/emi/operation-lookup` | Metabase 3794 → correos de HubSpot (solo si está en cobro) |
 | `emi-escalate.json` | `POST /webhook/emi/escalate` | HubSpot: busca ticket por conversación → lo crea si no existe |
+| `emi-whatsapp.json` | `POST /webhook/emi/whatsapp-<token>` | Evolution API → motor de Emi → Evolution; histórico y contactos en HubSpot. Guía: `whatsapp/evolution/README.md` |
 
 ## Puesta en marcha (en este orden)
 

@@ -47,6 +47,27 @@ module.exports = {
     }
   },
 
+  // Canal WhatsApp con Evolution API (flujo emi-whatsapp).
+  whatsapp: {
+    evolutionUrl: 'POR_DEFINIR',          // ej. https://evolution.plataform.com
+    instancia: 'emi',                     // nombre de la instancia creada en Evolution
+    // Parte secreta de la URL del webhook (Evolution no envía cabeceras de autenticación).
+    // Genera una con: openssl rand -hex 16
+    webhookToken: 'POR_DEFINIR',
+    emiWebhookBase: 'https://n8n.plataform.com', // donde viven los webhooks emi/client-lookup, etc.
+    emiSecret: 'POR_DEFINIR',             // el mismo valor de la credencial "Emi · secreto del webhook"
+    sesionHoras: 24,                      // sin mensajes por este tiempo → conversación nueva
+    silencioHoras: 12,                    // tras escalar o si escribe un asesor, Emi no responde (el cliente reactiva con "menú")
+    ventanaEcoSeg: 120,
+    retrasoEscrituraMs: 1200,             // "escribiendo…" antes de cada respuesta
+    crearContacto: true,                  // número desconocido → se crea el contacto en HubSpot para guardar el histórico
+    enmascararDocumentos: true,           // cédulas/NIT escritos por el cliente quedan como ***1234 en HubSpot (Ley 1581)
+    diasRetencionEstado: 7
+  },
+
+  // Ajustes del motor de Emi en WhatsApp (mismos campos que la consola: nombre, mensajes, horario, threshold…).
+  emi: {},
+
   hubspot: {
     // Correos "Actualización estado del proceso…" que se envían a los inversionistas.
     remitenteCorreos: 'info@mesfix.com',

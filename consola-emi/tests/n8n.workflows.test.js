@@ -182,10 +182,16 @@ test('los workflows en el repositorio están al día con build.js', () => {
 });
 
 test('webhooks con autenticación por cabecera, sin secretos ni ejecuciones exitosas guardadas', () => {
-  for (const wf of Object.values(buildAll(DEFAULT_CFG))) {
+  for (const [name, wf] of Object.entries(buildAll(DEFAULT_CFG))) {
     const hook = wf.nodes.find((n) => n.type === 'n8n-nodes-base.webhook');
-    assert.equal(hook.parameters.authentication, 'headerAuth');
-    assert.equal(hook.parameters.responseMode, 'responseNode');
+    if (name === 'emi-whatsapp') {
+      // Evolution no envía cabeceras: lo protege el token secreto en la ruta, y responde 200 al instante.
+      assert.match(hook.parameters.path, /^emi\/whatsapp-/);
+      assert.equal(hook.parameters.responseMode, 'onReceived');
+    } else {
+      assert.equal(hook.parameters.authentication, 'headerAuth');
+      assert.equal(hook.parameters.responseMode, 'responseNode');
+    }
     assert.equal(wf.settings.saveDataSuccessExecution, 'none');
     const src = JSON.stringify(wf);
     assert.ok(!/pat-(na|eu)\d-|Bearer [A-Za-z0-9]{20}|mb_[A-Za-z0-9]{20}/.test(src));

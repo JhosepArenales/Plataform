@@ -1,0 +1,7 @@
+{
+  "texto": { "event": "messages.upsert", "instance": "emi", "data": { "key": { "remoteJid": "573202550525@s.whatsapp.net", "fromMe": false, "id": "ABC1" }, "pushName": "Carlos", "message": { "conversation": "TEXTO" }, "messageType": "conversation", "messageTimestamp": 1793000000 } },
+  "extendido": { "event": "MESSAGES_UPSERT", "instance": "emi", "data": { "key": { "remoteJid": "12345@lid", "senderPn": "573001112233@s.whatsapp.net", "fromMe": false, "id": "ABC2" }, "message": { "extendedTextMessage": { "text": "hola" } }, "messageTimestamp": 1793000001 } },
+  "grupo": { "event": "messages.upsert", "data": { "key": { "remoteJid": "120363@g.us", "fromMe": false }, "message": { "conversation": "hola grupo" } } },
+  "imagen": { "event": "messages.upsert", "data": { "key": { "remoteJid": "573202550525@s.whatsapp.net", "fromMe": false, "id": "ABC3" }, "message": { "imageMessage": { "mimetype": "image/jpeg" } }, "messageType": "imageMessage" } },
+  "estado": { "event": "connection.update", "data": { "state": "open" } }
+}
