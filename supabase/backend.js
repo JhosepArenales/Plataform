@@ -180,13 +180,6 @@ async function routeIa(method, pathname, params, body) {
       p_from: dateOrNull(params.get('from')), p_to: dateOrNull(params.get('to')),
     });
   }
-  if (method === 'POST' && pathname === '/api/ia/evidences') {
-    return rpc('app_ia_evidence_save', { p_kind: body?.kind, p_title: body?.title, p_hours: Number(body?.hours_month) || 0, p_quality: body?.quality ?? '', p_link: body?.link ?? '' });
-  }
-  if (method === 'GET' && pathname === '/api/ia/evidences') return rpc('app_ia_evidences', { p_status: params.get('status') || null });
-  if (method === 'POST' && (r = m(/^\/api\/ia\/evidences\/([\w-]+)\/review$/))) {
-    return rpc('app_ia_evidence_review', { p_id: uuidOr(r[1]), p_status: body?.status, p_note: body?.note ?? '' });
-  }
   if (method === 'POST' && pathname === '/api/ia/mentorships') return rpc('app_ia_mentor_request', { p_note: body?.note ?? '' });
   if (method === 'GET' && pathname === '/api/ia/mentorships') return rpc('app_ia_mentorships');
   if (method === 'POST' && (r = m(/^\/api\/ia\/mentorships\/([\w-]+)\/assign$/))) {
@@ -213,6 +206,7 @@ async function routeIa(method, pathname, params, body) {
   if (method === 'GET' && pathname === '/api/ia/kpis') return rpc('app_ia_kpis');
   if (method === 'POST' && pathname === '/api/ia/total') return rpc('app_ia_set_total', { p_total: Number(body?.total) });
   if (method === 'POST' && pathname === '/api/ia/demo-setup') return rpc('app_ia_demo_setup');
+  if (method === 'POST' && (r = m(/^\/api\/ia\/reset\/([\w-]+)$/))) return rpc('app_ia_reset', { p_user: uuidOr(r[1]) });
   throw httpError(404, 'Ruta no encontrada.');
 }
 

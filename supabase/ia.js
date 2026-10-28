@@ -1,4 +1,4 @@
-// Formación IA por niveles: examen IA First, ruta personal, evidencias, mentorías,
+// Formación IA por niveles: examen IA First (una sola ronda), ruta personal, mentorías,
 // Demo Days, mapa de calor y panel de administración. Se registra en la app con
 // ACADEMIA_EXT (rutas, menú y pestaña de administración). Todas las reglas y
 // permisos se validan en la base (supabase/schema.sql, funciones app_ia_*).
@@ -8,19 +8,16 @@ const IA_LEVELS = {
     name: 'Explorador', icon: '🧭', range: '0–40',
     content: 'Pedirle bien las cosas a la IA y qué datos nunca compartir.',
     format: 'Microcapacitaciones y talleres presenciales.',
-    evidence: 'Usa IA en una tarea diaria.', kind: 'tarea',
   },
   practicante: {
     name: 'Practicante', icon: '⚙️', range: '41–70',
     content: 'Automatizar tareas de tu propio trabajo.',
     format: 'Talleres por área.',
-    evidence: 'Automatiza 1 tarea y registra las horas ahorradas.', kind: 'tarea',
   },
   constructor: {
     name: 'Constructor', icon: '🏗️', range: '71–100',
     content: 'Crear artefactos y agentes seguros, con ficha de control IA y publicación con el Plataform Deployer.',
     format: null,
-    evidence: 'Publica 1 artefacto con impacto medido.', kind: 'artefacto',
   },
 };
 const IA_ORDER = ['explorador', 'practicante', 'constructor'];
@@ -31,7 +28,6 @@ const ROLE_FOCUS = {
   analista: 'Como Analista, tu foco es la ejecución: usar la IA en tu trabajo.',
 };
 const DIFFICULTY = { facil: 'Fácil', media: 'Media', dificil: 'Difícil' };
-const EVIDENCE_STATUS = { pendiente: '⏳ En revisión', validada: '✅ Validada', rechazada: '↩️ Por ajustar' };
 const levelChip = (l) => h('span', { class: `ia-chip lvl-${l ?? 'none'}` }, l ? `${IA_LEVELS[l].icon} ${IA_LEVELS[l].name}` : 'Sin examen');
 const canSeeHeatmap = (u) => u?.role === 'admin' || u?.org_role === 'director';
 
@@ -63,62 +59,32 @@ async function renderIaHome() {
       h('div', { class: 'grow' },
         h('p', { class: 'eyebrow' }, 'Tu nivel IA'),
         h('h1', {}, info.name),
-        h('p', { class: 'muted' }, `${last.score} de 100 puntos · examen ${last.attempt_no} · ${formatDate(last.finished_at)}`),
-        me.attempts.length > 1 && h('p', { class: 'small' }, 'Tu camino: ', me.attempts.map((a, i) => [i ? ' → ' : '', levelChip(a.level)])))),
-    nextStepCard(me, info),
+        h('p', { class: 'muted' }, `${last.score} de 100 puntos · ${formatDate(last.finished_at)}`))),
     routeCard(me, info, courses),
-    evidenceCard(me, info),
     mentorCard(me),
-    sessionsTeaser(sessions),
-    canSeeHeatmap(session.user) && heatmapLink());
+    sessionsTeaser(sessions));
+  if (canSeeHeatmap(session.user)) page.append(heatmapLink());
   return page;
 }
 
 function examIntro(me) {
   const start = h('button', { class: 'btn btn-primary btn-lg' }, 'Empezar examen');
   start.addEventListener('click', async () => {
-    if (!await confirmAction('Examen IA First', 'Tienes 60 segundos por pregunta. Si sales o recargas la página, el tiempo sigue corriendo.', 'Empezar')) return;
+    if (!await confirmAction('Examen IA First', 'Es una sola ronda: 15 preguntas, 60 segundos cada una. Si sales o recargas la página, el tiempo sigue corriendo.', 'Empezar')) return;
     try { await busy(start, () => api('/api/ia/start', { method: 'POST', body: {} }), 'Preparando…'); location.hash = '#/ia/examen'; } catch (err) { toast(err.message, 'error'); }
   });
   return h('section', { class: 'card ia-hero' },
     h('div', { class: 'big-emoji' }, '🚀'),
     h('p', { class: 'eyebrow' }, 'Formación IA'),
     h('h1', {}, 'Descubre tu nivel en IA'),
-    h('p', { class: 'muted' }, 'Un examen corto define tu nivel y tu ruta de aprendizaje.'),
+    h('p', { class: 'muted' }, 'Una sola ronda, con preguntas fáciles, medias y difíciles mezcladas. Define tu nivel y tu ruta de aprendizaje.'),
     h('ul', { class: 'ia-facts' },
-      h('li', {}, h('strong', {}, '10'), h('span', {}, 'preguntas')),
+      h('li', {}, h('strong', {}, '15'), h('span', {}, 'preguntas')),
       h('li', {}, h('strong', {}, '60 s'), h('span', {}, 'por pregunta')),
       h('li', {}, h('strong', {}, '100'), h('span', {}, 'puntos'))),
     h('div', { class: 'ia-levels-row' }, IA_ORDER.map((k) => h('div', { class: `ia-mini lvl-${k}` },
       h('span', {}, IA_LEVELS[k].icon), h('strong', {}, IA_LEVELS[k].name), h('span', { class: 'small muted' }, `${IA_LEVELS[k].range} pts`)))),
-    me.can_start ? start : h('p', { class: 'muted' }, 'El examen se habilita cuando la administración active el banco de preguntas.'));
-}
-
-function nextStepCard(me, info) {
-  const validatedAfter = me.can_start;
-  const pending = me.evidences.find((e) => e.status === 'pendiente');
-  let title; let text; let action = null;
-  if (validatedAfter) {
-    title = '🎯 Listo para subir de nivel';
-    text = 'Tu evidencia fue validada. Presenta de nuevo el examen IA First.';
-    action = h('button', { class: 'btn btn-primary' }, 'Presentar examen');
-    action.addEventListener('click', async () => {
-      if (!await confirmAction('Examen IA First', 'Tienes 60 segundos por pregunta.', 'Empezar')) return;
-      try { await busy(action, () => api('/api/ia/start', { method: 'POST', body: {} })); location.hash = '#/ia/examen'; } catch (err) { toast(err.message, 'error'); }
-    });
-  } else if (pending) {
-    title = '⏳ Tu evidencia está en revisión';
-    text = `"${pending.title}". Cuando la validen, podrás presentar el examen para subir de nivel.`;
-  } else if (me.level === 'constructor' && me.evidences.some((e) => e.kind === 'artefacto' && e.status === 'validada')) {
-    title = '🏆 Tu artefacto ya tiene impacto medido';
-    text = 'Compártelo en el próximo Demo Day y acompaña a alguien como mentor.';
-    action = h('a', { class: 'btn btn-secondary', href: '#/ia/sesiones' }, 'Ver Demo Days');
-  } else {
-    title = '👉 Tu próximo paso';
-    text = info.evidence;
-    action = h('button', { class: 'btn btn-primary', onclick: () => openEvidenceForm(info.kind) }, 'Registrar evidencia');
-  }
-  return h('section', { class: 'card ia-next' }, h('div', { class: 'grow' }, h('h2', {}, title), h('p', {}, text)), action);
+    me.can_start ? start : h('p', { class: 'muted' }, 'Ya presentaste el examen. Si necesitas repetirlo, pídele a la administración que lo reinicie.'));
 }
 
 function routeCard(me, info, courses) {
@@ -128,42 +94,11 @@ function routeCard(me, info, courses) {
     h('dl', { class: 'ia-route' },
       h('dt', {}, '📚 Contenido'), h('dd', {}, info.content),
       info.format && [h('dt', {}, '🗓️ Formato'), h('dd', {}, info.format)],
-      h('dt', {}, '✅ Evidencia para subir'), h('dd', {}, info.evidence),
       me.org_role && [h('dt', {}, '👤 Tu rol'), h('dd', {}, ROLE_FOCUS[me.org_role])]),
     own.length
       ? h('div', { class: 'ia-courses' }, h('h3', {}, 'Cursos de tu ruta'), own.map((c) => h('a', { class: 'ia-course', href: `#/curso/${c.id}` },
         h('span', {}, c.cover_emoji), h('span', { class: 'grow' }, c.title), h('span', { class: 'small muted' }, `${c.done_count}/${c.lesson_count}`))))
       : h('p', { class: 'small muted' }, 'Pronto aparecerán aquí los cursos de tu ruta.'));
-}
-
-function evidenceCard(me) {
-  return h('section', { class: 'card' },
-    h('div', { class: 'section-head' }, h('h2', {}, 'Mis evidencias'),
-      h('button', { class: 'btn btn-ghost btn-sm', onclick: () => openEvidenceForm(IA_LEVELS[me.level].kind) }, '+ Registrar')),
-    me.evidences.length
-      ? h('ul', { class: 'plain ia-list' }, me.evidences.map((e) => h('li', {},
-        h('span', { class: 'ia-kind' }, e.kind === 'artefacto' ? '🧩' : '📝'),
-        h('div', { class: 'grow' }, h('strong', {}, e.title),
-          h('div', { class: 'small muted' }, [e.hours_month > 0 && `${e.hours_month} h/mes`, e.quality].filter(Boolean).join(' · ')),
-          e.review_note && h('div', { class: 'small' }, `Nota: ${e.review_note}`)),
-        h('span', { class: `ia-status st-${e.status}` }, EVIDENCE_STATUS[e.status]))))
-      : h('p', { class: 'small muted' }, 'Aún no registras evidencias. Cada evidencia validada te acerca al siguiente nivel.'));
-}
-
-async function openEvidenceForm(defaultKind) {
-  const form = h('form', { class: 'stack ia-form' },
-    h('div', { class: 'seg', role: 'radiogroup' },
-      ['tarea', 'artefacto'].map((k) => h('label', { class: 'seg-opt' },
-        h('input', { type: 'radio', name: 'kind', value: k, checked: k === defaultKind }), k === 'tarea' ? '📝 Tarea' : '🧩 Artefacto'))),
-    h('label', { class: 'field' }, '¿Qué hiciste con IA?', h('input', { name: 'title', required: true, maxlength: 200, placeholder: 'Ej.: Resumo con IA los correos de clientes cada mañana' })),
-    h('div', { class: 'grid-2' },
-      h('label', { class: 'field' }, 'Horas ahorradas al mes', h('input', { name: 'hours_month', type: 'number', min: 0, max: 744, step: 0.5, value: 0 })),
-      h('label', { class: 'field' }, 'Enlace (opcional)', h('input', { name: 'link', type: 'url', placeholder: 'https://…' }))),
-    h('label', { class: 'field' }, 'Mejora en calidad (opcional)', h('input', { name: 'quality', maxlength: 500, placeholder: 'Ej.: menos errores de digitación' })));
-  const ok = await modal({ title: 'Registrar evidencia', body: form, actions: [{ label: 'Cancelar', value: false, class: 'btn-ghost' }, { label: 'Enviar a revisión', value: true, class: 'btn-primary' }] });
-  if (!ok) return;
-  const data = Object.fromEntries(new FormData(form));
-  try { await api('/api/ia/evidences', { method: 'POST', body: data }); toast('Evidencia enviada a revisión', 'success'); router(); } catch (err) { toast(err.message, 'error'); }
 }
 
 function mentorCard(me) {
@@ -360,32 +295,20 @@ function heatmapView(data, isAdmin) {
     const pct = r.total ? Math.round((100 * r[k]) / r.total) : 0;
     return h('td', { class: `ia-cell lvl-${k}`, style: { '--alpha': `${pct / 100}` } }, h('strong', {}, r[k]), h('span', {}, `${pct}%`));
   };
-  const p = data.progress;
   return [
     h('div', { class: 'card table-wrap' }, data.rows.length ? h('table', { class: 'table ia-heat' },
       h('thead', {}, h('tr', {}, h('th', {}, 'Área'), IA_ORDER.map((k) => h('th', {}, `${IA_LEVELS[k].icon} ${IA_LEVELS[k].name}`)), h('th', {}, 'Personas'))),
       h('tbody', {}, data.rows.map((r) => h('tr', {}, h('td', {}, `${r.icon} ${r.area}`), IA_ORDER.map((k) => cell(r, k)),
         h('td', {}, r.hidden ? h('span', { class: 'small muted' }, 'Menos de 3 personas') : r.total))))) : h('p', { class: 'muted' }, 'Todavía no hay exámenes con estos filtros.'),
     total > 0 && h('p', { class: 'small muted' }, `${total} ${total === 1 ? 'persona' : 'personas'} con examen.`)),
-    h('div', { class: 'card' }, h('h2', {}, '📈 Primer vs. segundo examen'),
-      p.hidden ? h('p', { class: 'muted' }, 'Hay menos de 3 personas con dos exámenes: el dato se mostrará cuando haya más.')
-        : p.with_two === 0 ? h('p', { class: 'muted' }, 'Nadie ha presentado el segundo examen todavía.')
-          : [h('div', { class: 'kpis' },
-            h('div', { class: 'kpi' }, h('span', { class: 'kpi-label' }, 'Subieron de nivel'), h('strong', {}, `${Math.round((100 * p.up) / p.with_two)}%`), h('span', { class: 'small muted' }, `${p.up} de ${p.with_two}`)),
-            h('div', { class: 'kpi' }, h('span', { class: 'kpi-label' }, 'Se mantuvieron'), h('strong', {}, p.same)),
-            h('div', { class: 'kpi' }, h('span', { class: 'kpi-label' }, 'Bajaron'), h('strong', {}, p.down))),
-          isAdmin && p.people.length > 0 && h('div', { class: 'table-wrap' }, h('table', { class: 'table' },
-            h('thead', {}, h('tr', {}, ['Persona', 'Área', '1.er examen', '2.º examen', ''].map((t) => h('th', {}, t)))),
-            h('tbody', {}, p.people.map((x) => h('tr', {}, h('td', {}, x.name), h('td', {}, x.area ?? '—'), h('td', {}, levelChip(x.first)), h('td', {}, levelChip(x.second)),
-              h('td', {}, x.delta > 0 ? '⬆️ Subió' : x.delta < 0 ? '⬇️ Bajó' : '＝'))))))]),
   ];
 }
 
 // ---------- Administración ----------
-const IA_ADMIN_TABS = [['indicadores', '📊 Indicadores'], ['mapa', '🗺️ Mapa de calor'], ['evidencias', '✅ Evidencias'], ['mentorias', '🤝 Mentorías'], ['sesiones', '🎤 Sesiones'], ['preguntas', '❓ Preguntas'], ['roles', '👤 Roles']];
+const IA_ADMIN_TABS = [['indicadores', '📊 Indicadores'], ['mapa', '🗺️ Mapa de calor'], ['mentorias', '🤝 Mentorías'], ['sesiones', '🎤 Sesiones'], ['preguntas', '❓ Preguntas'], ['roles', '👤 Roles']];
 
 async function renderIaAdmin(tab = 'indicadores') {
-  const views = { indicadores: iaKpis, mapa: () => renderIaHeatmap(true), evidencias: iaEvidences, mentorias: iaMentorships, sesiones: iaSessionsAdmin, preguntas: iaQuestions, roles: iaRoles };
+  const views = { indicadores: iaKpis, mapa: () => renderIaHeatmap(true), mentorias: iaMentorships, sesiones: iaSessionsAdmin, preguntas: iaQuestions, roles: iaRoles };
   const view = views[tab] ?? iaKpis;
   return h('div', { class: 'page' }, adminTabs('formacion'),
     h('nav', { class: 'chips ia-subtabs' }, IA_ADMIN_TABS.map(([k, label]) => h('a', { class: `chip ${k === tab ? 'active' : ''}`, href: `#/admin/formacion/${k}` }, label))),
@@ -412,52 +335,17 @@ async function iaKpis() {
   return h('div', { class: 'stack' },
     h('div', { class: 'kpis' },
       kpi('Cobertura del diagnóstico', pct(k.tested, k.total_personal), `${k.tested} de ${k.total_personal} personas con examen`, '100% al 30-nov', 'semanal'),
-      kpi('Subida de nivel', pct(k.up, k.with_two), `${k.up} de ${k.with_two} con dos exámenes`, '≥ 30%', 'trimestral'),
-      kpi('Impacto medido', pct(k.artifacts_measured, k.artifacts), `${k.artifacts_measured} de ${k.artifacts} artefactos con horas o calidad`, '100%', 'mensual'),
-      kpi('Horas ahorradas al mes', `${Number(k.hours_month)} h`, 'Suma de evidencias validadas', 'línea base en dic', 'mensual')),
+      h('div', { class: 'card kpi' }, h('span', { class: 'kpi-label' }, 'Puntaje promedio'), h('strong', {}, k.avg_score ?? '—'), h('span', { class: 'small muted' }, 'de 100 puntos')),
+      (k.by_difficulty ?? []).map((d) => h('div', { class: 'card kpi' }, h('span', { class: 'kpi-label' }, `Aciertos en preguntas ${DIFFICULTY[d.difficulty].toLowerCase()}s`),
+        h('strong', {}, `${d.correct_pct}%`), h('span', { class: 'small muted' }, `${d.answered} respuestas`)))),
     h('div', { class: 'card' }, h('h3', {}, 'Personas por nivel'),
       h('div', { class: 'ia-levels-row' }, IA_ORDER.map((l) => h('div', { class: `ia-mini lvl-${l}` }, h('span', {}, IA_LEVELS[l].icon), h('strong', {}, k.levels[l]), h('span', { class: 'small muted' }, IA_LEVELS[l].name))))),
-    (k.pending_evidences > 0 || k.pending_mentorships > 0) && h('div', { class: 'card callout' }, h('strong', {}, 'Por atender: '),
-      k.pending_evidences > 0 && h('a', { href: '#/admin/formacion/evidencias' }, `${k.pending_evidences} evidencias por validar`),
-      k.pending_evidences > 0 && k.pending_mentorships > 0 && ' · ',
-      k.pending_mentorships > 0 && h('a', { href: '#/admin/formacion/mentorias' }, `${k.pending_mentorships} solicitudes de mentoría`)),
+    k.pending_mentorships > 0 && h('div', { class: 'card callout' }, h('strong', {}, 'Por atender: '),
+      h('a', { href: '#/admin/formacion/mentorias' }, `${k.pending_mentorships} solicitudes de mentoría`)),
     h('div', { class: 'card stack' },
       h('label', { class: 'field inline' }, 'Total del personal', total, saveTotal),
       h('p', { class: 'small muted' }, k.total_from_config ? 'Se usa el número oficial que registraste.' : 'Mientras no registres el número oficial, se usa el total de personas con cuenta.'),
-      h('div', { class: 'row' }, demoBtn, h('span', { class: 'small muted' }, 'Crea primero las cuentas demo.explorador@, demo.practicante@ y demo.constructor@ desde la pantalla de ingreso. No cuentan en los indicadores.'))));
-}
-
-async function iaEvidences() {
-  let status = 'pendiente';
-  const list = h('div', { class: 'stack' });
-  const load = async () => {
-    const items = await api(`/api/ia/evidences?status=${status}`);
-    list.replaceChildren(...(items.length ? items.map((e) => {
-      const review = async (target) => {
-        let note = '';
-        if (target === 'rechazada') {
-          const input = h('input', { maxlength: 200, placeholder: '¿Qué debe ajustar?' });
-          if (!await modal({ title: 'Pedir ajustes', body: input, actions: [{ label: 'Cancelar', value: false, class: 'btn-ghost' }, { label: 'Enviar', value: true, class: 'btn-primary' }] })) return;
-          note = input.value;
-        }
-        try { await api(`/api/ia/evidences/${e.id}/review`, { method: 'POST', body: { status: target, note } }); toast(target === 'validada' ? 'Evidencia validada' : 'Se pidieron ajustes', 'success'); load(); } catch (err) { toast(err.message, 'error'); }
-      };
-      return h('div', { class: 'card ia-evidence' },
-        h('div', { class: 'grow' },
-          h('div', { class: 'row small muted' }, h('strong', {}, e.person), e.area && h('span', {}, e.area), levelChip(e.level), h('span', {}, formatDate(e.created_at))),
-          h('h3', {}, `${e.kind === 'artefacto' ? '🧩' : '📝'} ${e.title}`),
-          h('p', { class: 'small' }, [e.hours_month > 0 && `${e.hours_month} h/mes`, e.quality].filter(Boolean).join(' · ') || 'Sin horas ni calidad registradas'),
-          e.link && h('a', { href: e.link, target: '_blank', rel: 'noopener', class: 'small' }, 'Abrir enlace ↗')),
-        e.status === 'pendiente'
-          ? h('div', { class: 'row' }, h('button', { class: 'btn btn-ghost btn-sm', onclick: () => review('rechazada') }, 'Pedir ajustes'), h('button', { class: 'btn btn-primary btn-sm', onclick: () => review('validada') }, 'Validar'))
-          : h('span', { class: `ia-status st-${e.status}` }, EVIDENCE_STATUS[e.status]));
-    }) : [h('p', { class: 'muted' }, 'No hay evidencias en este estado.')]));
-  };
-  const seg = h('div', { class: 'seg' }, Object.entries({ pendiente: 'Por validar', validada: 'Validadas', rechazada: 'Con ajustes' }).map(([k, label]) => h('button', {
-    class: k === status ? 'active' : '', onclick: (e) => { status = k; seg.querySelectorAll('button').forEach((b) => b.classList.toggle('active', b === e.currentTarget)); load(); },
-  }, label)));
-  await load();
-  return h('div', { class: 'stack' }, h('p', { class: 'muted' }, 'Una evidencia validada habilita a la persona para presentar de nuevo el examen y subir de nivel.'), seg, list);
+      h('div', { class: 'row' }, demoBtn, h('span', { class: 'small muted' }, 'Crea primero las cuentas demo.explorador@, demo.practicante@ y demo.constructor@ en #/acceso-demo. No cuentan en los indicadores.'))));
 }
 
 async function iaMentorships() {
@@ -525,7 +413,7 @@ async function iaSessionsAdmin() {
 
 async function iaQuestions() {
   const bank = await api('/api/ia/questions');
-  const need = { facil: 3, media: 3, dificil: 4 };
+  const need = { facil: 5, media: 5, dificil: 5 };
   const editor = (q) => {
     const state = q ? { ...q, options: [...q.options] } : { difficulty: 'facil', prompt: '', options: ['', '', '', ''], correct_index: 0, explanation: '', active: true };
     while (state.options.length < 4) state.options.push('');
@@ -534,7 +422,7 @@ async function iaQuestions() {
     const body = h('div', { class: 'stack' },
       h('div', { class: 'grid-2' },
         h('label', { class: 'field' }, 'Dificultad', h('select', { onchange: (e) => { state.difficulty = e.target.value; } },
-          Object.entries(DIFFICULTY).map(([k, t]) => h('option', { value: k, selected: k === state.difficulty }, `${t} · ${{ facil: 6, media: 10, dificil: 13 }[k]} pts`)))),
+          Object.entries(DIFFICULTY).map(([k, t]) => h('option', { value: k, selected: k === state.difficulty }, `${t} · ${{ facil: 5, media: 7, dificil: 8 }[k]} pts`)))),
         h('label', { class: 'field inline' }, h('input', { type: 'checkbox', checked: state.active, onchange: (e) => { state.active = e.target.checked; }, style: { width: 'auto' } }), 'Activa')),
       h('label', { class: 'field' }, 'Pregunta', h('input', { value: state.prompt, oninput: (e) => { state.prompt = e.target.value; } })),
       h('div', { class: 'options-edit' }, [0, 1, 2, 3].map((k) => h('label', { class: `option-edit answer-${k}` },
@@ -555,7 +443,7 @@ async function iaQuestions() {
     return body;
   };
   return h('div', { class: 'stack' },
-    h('p', { class: 'muted' }, 'Cada examen toma al azar 3 fáciles (6 pts), 3 medias (10 pts) y 4 difíciles (13 pts) entre las activas: 100 puntos. Las opciones se muestran en orden aleatorio.'),
+    h('p', { class: 'muted' }, 'Cada examen toma al azar 5 fáciles (5 pts), 5 medias (7 pts) y 5 difíciles (8 pts) entre las activas: 15 preguntas y 100 puntos, en orden mezclado. Las opciones también se muestran en orden aleatorio.'),
     h('div', { class: 'row' }, Object.entries(need).map(([d, n]) => {
       const active = bank.filter((q) => q.active && q.difficulty === d).length;
       return h('span', { class: `ia-status ${active >= n ? 'st-validada' : 'st-pendiente'}` }, `${DIFFICULTY[d]}: ${active} activas (mín. ${n})`);
@@ -570,16 +458,21 @@ async function iaQuestions() {
 
 async function iaRoles() {
   const users = await api('/api/admin/users');
+  const reset = async (u, btn) => {
+    if (!await confirmAction('Reiniciar examen', `${u.name} podrá presentar el examen IA First de nuevo. Se borra su resultado actual.`, 'Reiniciar', true)) return;
+    try { await busy(btn, () => api(`/api/ia/reset/${u.id}`, { method: 'POST', body: {} })); toast(`Examen de ${u.name} reiniciado`, 'success'); router(); } catch (err) { toast(err.message, 'error'); }
+  };
   return h('div', { class: 'stack' },
-    h('p', { class: 'muted' }, 'El rol define el foco de la ruta. Los directores ven el mapa de calor agregado de su área, sin puntajes individuales.'),
+    h('p', { class: 'muted' }, 'El rol define el foco de la ruta. Los directores ven el mapa de calor agregado de su área, sin puntajes individuales. El examen es de una sola ronda; si alguien necesita repetirlo, reinícialo aquí.'),
     h('div', { class: 'card table-wrap' }, h('table', { class: 'table' },
-      h('thead', {}, h('tr', {}, ['Persona', 'Área', 'Nivel IA', 'Rol'].map((t) => h('th', {}, t)))),
+      h('thead', {}, h('tr', {}, ['Persona', 'Área', 'Nivel IA', 'Rol', ''].map((t) => h('th', {}, t)))),
       h('tbody', {}, users.filter((u) => u.active).map((u) => h('tr', {},
         h('td', {}, u.name, u.is_demo && h('span', { class: 'tag' }, ' demo')), h('td', {}, u.area_name ? `${u.area_icon} ${u.area_name}` : '—'), h('td', {}, levelChip(u.ia_level)),
         h('td', {}, h('select', { 'aria-label': `Rol de ${u.name}`, onchange: async (e) => {
           const sel = e.target;
           try { await api(`/api/admin/users/${u.id}/org-role`, { method: 'POST', body: { org_role: sel.value || null } }); toast(`Rol de ${u.name} actualizado`, 'success'); } catch (err) { toast(err.message, 'error'); sel.value = u.org_role ?? ''; }
-        } }, h('option', { value: '' }, 'Sin rol'), Object.entries(ORG_ROLES).map(([k, t]) => h('option', { value: k, selected: k === u.org_role }, t))))))))));
+        } }, h('option', { value: '' }, 'Sin rol'), Object.entries(ORG_ROLES).map(([k, t]) => h('option', { value: k, selected: k === u.org_role }, t)))),
+        h('td', {}, u.ia_level && h('button', { class: 'btn btn-ghost btn-sm', onclick: (e) => reset(u, e.currentTarget) }, 'Reiniciar examen'))))))));
 }
 
 // ---------- Registro en la app ----------
@@ -597,5 +490,5 @@ iaExt.homeCard = () => {
   return h('a', { class: `hero-game ia-home-card lvl-${lvl ?? 'none'}`, href: '#/ia' },
     h('span', { class: 'big-emoji' }, lvl ? IA_LEVELS[lvl].icon : '🚀'),
     h('strong', {}, lvl ? `Nivel IA: ${IA_LEVELS[lvl].name}` : 'Descubre tu nivel IA'),
-    h('span', { class: 'small' }, lvl ? 'Ver mi ruta' : 'Examen de 10 preguntas'));
+    h('span', { class: 'small' }, lvl ? 'Ver mi ruta' : 'Examen de 15 preguntas'));
 };

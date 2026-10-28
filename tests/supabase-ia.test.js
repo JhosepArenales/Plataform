@@ -1,5 +1,5 @@
-// Formación IA por niveles (versión Supabase): examen con tiempo controlado en la
-// base, niveles, mapa de calor con permisos por rol, evidencias, mentorías,
+// Formación IA por niveles (versión Supabase): examen de una sola ronda con tiempo
+// controlado en la base, niveles, mapa de calor con permisos por rol, mentorías,
 // Demo Days e indicadores.
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
@@ -50,40 +50,43 @@ before(async () => {
 });
 after(async () => { await fake?.close(); });
 
-test('el banco trae 10 preguntas en borrador que solo la administración ve', async () => {
+test('el banco trae 15 preguntas en borrador que solo la administración ve', async () => {
   const bank = await ok(admin.call('/api/ia/questions'));
-  assert.equal(bank.length, 10);
+  assert.equal(bank.length, 15);
   assert.ok(bank.every((q) => q.draft));
-  assert.deepEqual(['facil', 'media', 'dificil'].map((d) => bank.filter((q) => q.difficulty === d).length), [3, 3, 4]);
+  assert.deepEqual(['facil', 'media', 'dificil'].map((d) => bank.filter((q) => q.difficulty === d).length), [5, 5, 5]);
   assert.equal((await ana.call('/api/ia/questions')).status, 403);
   assert.equal((await ana.call('/api/ia/questions', { method: 'POST', body: { difficulty: 'facil', prompt: 'x', options: ['a', 'b'], correct_index: 0 } })).status, 403);
   const bad = await admin.call('/api/ia/questions', { method: 'POST', body: { difficulty: 'facil', prompt: '¿Pregunta válida?', options: ['solo una'], correct_index: 0 } });
   assert.equal(bad.status, 400);
 });
 
-test('examen: 10 preguntas sin respuesta visible, 100 puntos y nivel según el puntaje', async () => {
+test('examen: 15 preguntas mezcladas sin respuesta visible, 100 puntos y nivel según el puntaje', async () => {
   const first = await ok(ana.call('/api/ia/start', { method: 'POST', body: {} }));
   assert.equal(first.status, 'question');
-  assert.equal(first.total, 10);
+  assert.equal(first.total, 15);
   assert.equal(first.position, 1);
-  assert.equal(first.difficulty, 'facil');
   assert.equal(first.correct_shown, undefined, 'la respuesta correcta no llega al navegador');
   assert.ok(first.remaining_ms > 55000 && first.remaining_ms <= 60000);
   const again = await ok(ana.call('/api/ia/start', { method: 'POST', body: {} }));
   assert.equal(again.position, 1, 'reiniciar no crea otro intento ni reinicia el tiempo');
+  const order = (await fake.db.query('select difficulty from ia_attempt_items where attempt_id = $1 order by position', [first.attempt_id])).rows.map((r) => r.difficulty);
+  assert.deepEqual([...new Set(order)].sort(), ['dificil', 'facil', 'media']);
+  assert.deepEqual(['facil', 'media', 'dificil'].map((d) => order.filter((x) => x === d).length), [5, 5, 5]);
 
   const result = await takeExam(ana, () => 'bien');
   assert.equal(result.status, 'finished');
   assert.equal(result.score, 100);
   assert.equal(result.level, 'constructor');
-  assert.deepEqual(result.by_difficulty.map((d) => d.possible), [18, 30, 52]);
+  assert.deepEqual(result.by_difficulty.map((d) => d.possible), [25, 35, 40]);
 
   const low = await takeExam(beto, () => 'mal');
   assert.equal(low.score, 0); assert.equal(low.level, 'explorador');
 
-  // Fáciles y medias bien (48), difíciles: una a tiempo bien (13) y el resto se acaba el tiempo → 61, Practicante.
-  const mid = await takeExam(caro, (pos) => (pos <= 6 || pos === 7 ? 'bien' : 'tiempo'));
-  assert.equal(mid.score, 61); assert.equal(mid.level, 'practicante'); assert.equal(mid.unanswered, 3);
+  // Fáciles (25) y medias (35) bien; de las difíciles, una bien (8) y al resto se le acaba el tiempo → 68, Practicante.
+  let hardSeen = 0;
+  const mid = await takeExam(caro, (pos, q) => (q.difficulty !== 'dificil' ? 'bien' : (hardSeen++ === 0 ? 'bien' : 'tiempo')));
+  assert.equal(mid.score, 68); assert.equal(mid.level, 'practicante'); assert.equal(mid.unanswered, 4);
 
   const me = await ok(ana.call('/api/me'));
   assert.equal(me.user.ia_level, 'constructor');
@@ -100,21 +103,17 @@ test('responder fuera de tiempo cuenta como no respondida', async () => {
   await takeExam(otra, () => 'bien');
 });
 
-test('para repetir el examen hace falta una evidencia validada', async () => {
+test('una sola ronda: no se repite salvo que la administración reinicie el examen', async () => {
   assert.equal((await ok(beto.call('/api/ia/me'))).can_start, false);
   assert.equal((await beto.call('/api/ia/start', { method: 'POST', body: {} })).status, 409);
-  assert.equal((await beto.call('/api/ia/evidences', { method: 'POST', body: { kind: 'tarea', title: 'Uso IA para resumir correos', link: 'http://inseguro' } })).status, 400);
-  const ev = await ok(beto.call('/api/ia/evidences', { method: 'POST', body: { kind: 'tarea', title: 'Uso IA para resumir correos', hours_month: 4, link: 'https://drive.google.com/x' } }));
-  assert.equal(ev.status, 'pendiente');
-  assert.equal((await ok(beto.call('/api/ia/me'))).can_start, false, 'pendiente no habilita');
-  assert.equal((await beto.call(`/api/ia/evidences/${ev.id}/review`, { method: 'POST', body: { status: 'validada' } })).status, 403);
-  const pending = await ok(admin.call('/api/ia/evidences?status=pendiente'));
-  assert.equal(pending[0].person, 'Beto');
-  await ok(admin.call(`/api/ia/evidences/${ev.id}/review`, { method: 'POST', body: { status: 'validada' } }));
+  assert.equal((await beto.call(`/api/ia/reset/${beto.id}`, { method: 'POST', body: {} })).status, 403);
+  await ok(admin.call(`/api/ia/reset/${beto.id}`, { method: 'POST', body: {} }));
   assert.equal((await ok(beto.call('/api/ia/me'))).can_start, true);
-  const second = await takeExam(beto, (pos) => (pos <= 6 ? 'bien' : 'mal'));
-  assert.equal(second.attempt_no, 2);
-  assert.equal(second.level, 'practicante');
+  assert.equal((await beto.call('/api/ia/evidences', { method: 'POST', body: { kind: 'tarea', title: 'x' } })).status, 404, 'las evidencias ya no existen');
+  const again = await takeExam(beto, (pos, q) => (q.difficulty === 'facil' || q.difficulty === 'media' ? 'bien' : 'mal'));
+  assert.equal(again.attempt_no, 1);
+  assert.equal(again.score, 60);
+  assert.equal(again.level, 'practicante');
 });
 
 test('mapa de calor: la administración ve todo; el director solo agregados de su área', async () => {
@@ -122,15 +121,11 @@ test('mapa de calor: la administración ve todo; el director solo agregados de s
   const com = all.rows.find((r) => r.area === 'Comercial');
   assert.deepEqual([com.explorador, com.practicante, com.constructor, com.total], [0, 2, 1, 3]);
   assert.ok(all.rows.some((r) => r.area === 'Finanzas'));
-  assert.equal(all.progress.with_two, 1);
-  assert.equal(all.progress.up, 1);
-  assert.equal(all.progress.people[0].name, 'Beto');
+  assert.equal(all.progress, undefined, 'una sola ronda: no hay comparación entre exámenes');
 
   const mine = await ok(dir.call(`/api/ia/heatmap?area=${areaId('Finanzas')}`));
   assert.deepEqual(mine.rows.map((r) => r.area), ['Comercial'], 'el director no puede pedir otra área');
   assert.equal(mine.rows[0].practicante, 2);
-  assert.deepEqual(mine.progress.people, [], 'sin nombres para directores');
-  assert.equal(mine.progress.hidden, true, 'menos de 3 personas con 2 exámenes: se oculta');
 
   assert.equal((await ana.call('/api/ia/heatmap')).status, 403);
   await ok(admin.call(`/api/admin/users/${dir.id}/area`, { method: 'POST', body: { area_id: areaId('Finanzas') } }));
@@ -174,8 +169,6 @@ test('Demo Days: inscripción para presentar y encuesta después de la sesión',
 });
 
 test('indicadores sin usuarios de prueba y usuarios demo por nivel', async () => {
-  const art = await ok(ana.call('/api/ia/evidences', { method: 'POST', body: { kind: 'artefacto', title: 'Bot de conciliación', hours_month: 20, link: 'https://apps.plataform.com/x' } }));
-  await ok(admin.call(`/api/ia/evidences/${art.id}/review`, { method: 'POST', body: { status: 'validada' } }));
   await ok(admin.call('/api/ia/total', { method: 'POST', body: { total: 40 } }));
   for (const lvl of ['explorador', 'practicante', 'constructor']) await openBrowser(fake, `demo.${lvl}@plataform.com`, { name: `Demo ${lvl}` });
   const setup = await ok(admin.call('/api/ia/demo-setup', { method: 'POST', body: {} }));
@@ -183,8 +176,11 @@ test('indicadores sin usuarios de prueba y usuarios demo por nivel', async () =>
   const k = await ok(admin.call('/api/ia/kpis'));
   assert.equal(k.total_personal, 40);
   assert.equal(k.tested, 4, 'Ana, Beto, Caro y Otra; los demo no cuentan');
-  assert.deepEqual([k.with_two, k.up], [1, 1]);
-  assert.deepEqual([k.artifacts, k.artifacts_measured, Number(k.hours_month)], [1, 1, 24]);
+  const otraScore = (await fake.db.query('select score from ia_attempts where user_id = $1', [otra.id])).rows[0].score;
+  assert.ok([92, 93, 95].includes(otraScore), 'Otra perdió una sola pregunta por tiempo');
+  assert.equal(Number(k.avg_score), Math.round((100 + 60 + 68 + otraScore) / 4));
+  assert.deepEqual(k.by_difficulty.map((d) => d.difficulty), ['facil', 'media', 'dificil']);
+  assert.deepEqual([k.levels.constructor, k.levels.practicante, k.levels.explorador], [2, 2, 0]);
   const demoLevels = await fake.db.query(`select p.email, a.level from ia_attempts a join profiles p on p.id = a.user_id where p.is_demo order by a.score`);
   assert.deepEqual(demoLevels.rows.map((r) => r.level), ['explorador', 'practicante', 'constructor']);
   assert.equal((await ana.call('/api/ia/kpis')).status, 403);
