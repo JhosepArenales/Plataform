@@ -26,7 +26,8 @@ export async function startFakeSupabase() {
   await db.exec(AUTH_STUB);
   await db.exec(fs.readFileSync(new URL('../supabase/schema.sql', import.meta.url), 'utf8'));
 
-  const accounts = new Map(); // email → { id, password, name }
+  const accounts = new Map(); // email → { id, password, name, confirmed }
+  const settings = { confirmEmail: false }; // como "Confirm email" en Supabase
   const tokens = new Map(); // access_token → user id
   let queue = Promise.resolve();
   const serial = (fn) => { const run = queue.then(fn, fn); queue = run.catch(() => {}); return run; };
@@ -89,9 +90,9 @@ export async function startFakeSupabase() {
       if (String(body.password ?? '').length < 6) return [422, { code: 422, error_code: 'weak_password', msg: 'Password should be at least 6 characters.' }];
       try {
         const r = await db.query(`insert into auth.users (email, raw_user_meta_data) values ($1, $2::jsonb) returning id`, [email, JSON.stringify(body.data ?? {})]);
-        const a = { id: r.rows[0].id, email, password: body.password, name: body.data?.name ?? '' };
+        const a = { id: r.rows[0].id, email, password: body.password, name: body.data?.name ?? '', confirmed: !settings.confirmEmail };
         accounts.set(email, a);
-        return [200, sessionFor(a)];
+        return [200, a.confirmed ? sessionFor(a) : userJson(a)];
       } catch {
         return [500, { code: 500, error_code: 'unexpected_failure', msg: 'Database error saving new user' }];
       }
@@ -99,6 +100,7 @@ export async function startFakeSupabase() {
     if (req.method === 'POST' && url.pathname === '/auth/v1/token' && url.searchParams.get('grant_type') === 'password') {
       const a = accounts.get(String(body.email ?? '').toLowerCase());
       if (!a || a.password !== body.password) return [400, { code: 400, error_code: 'invalid_credentials', msg: 'Invalid login credentials' }];
+      if (a.confirmed === false) return [400, { code: 400, error_code: 'email_not_confirmed', msg: 'Email not confirmed' }];
       return [200, sessionFor(a)];
     }
     if (url.pathname === '/auth/v1/user') {
@@ -128,6 +130,9 @@ export async function startFakeSupabase() {
   return {
     url: `http://127.0.0.1:${server.address().port}`,
     db,
+    // Activa o desactiva "Confirm email"; confirmAll() confirma las cuentas pendientes.
+    setConfirmEmail: (on) => { settings.confirmEmail = on; },
+    confirmAll: () => { for (const a of accounts.values()) a.confirmed = true; },
     // Consulta directa como la persona indicada (para comprobar permisos de tablas).
     asUser: (userId, sql) => db.transaction(async (tx) => {
       await tx.query(`select set_config('request.jwt.claim.sub', $1, true)`, [userId ?? '']);

@@ -81,8 +81,23 @@ function renderLogin() {
     session.token = 'supabase';
     afterLogin((await api('/api/me')).user);
   };
-  const askName = (message) => {
-    const name = h('input', { name: 'name', required: true, minlength: 2, maxlength: 60, autocomplete: 'name', placeholder: 'Nombre y apellido', 'aria-label': 'Tu nombre' });
+  // Entra con la cuenta guardada de este navegador; si aún no existe, la crea.
+  const enterAsGuest = async (guest) => {
+    let { error } = await sb.auth.signInWithPassword({ email: guest.email, password: guest.password });
+    if (error && /invalid login credentials/i.test(error.message)) {
+      const created = await sb.auth.signUp({ email: guest.email, password: guest.password, options: { data: { name: guest.name } } });
+      if (created.error) throw new Error(authMessage(created.error));
+      if (created.data.session) return enter();
+      error = { message: 'Email not confirmed' };
+    }
+    if (error && /email not confirmed/i.test(error.message)) {
+      throw new Error('Falta un ajuste en Supabase: desactiva "Confirm email" (Authentication → Sign In / Providers → Email) y vuelve a intentar.');
+    }
+    if (error) throw new Error(authMessage(error));
+    return enter();
+  };
+  const askName = (message, value = '') => {
+    const name = h('input', { name: 'name', required: true, minlength: 2, maxlength: 60, autocomplete: 'name', placeholder: 'Nombre y apellido', 'aria-label': 'Tu nombre', value });
     const go = h('button', { class: 'btn btn-primary btn-block btn-lg', type: 'submit' }, 'Empezar');
     const form = h('form', { class: 'stack' },
       h('h1', {}, '¡Bienvenido! 👋'),
@@ -98,16 +113,12 @@ function renderLogin() {
       const guest = {
         email: `invitado.${crypto.randomUUID().slice(0, 12)}@${ACADEMIA_CONFIG.domain}`,
         password: btoa(String.fromCharCode(...bytes)),
+        ...readGuest(),
+        name: name.value.trim(),
       };
-      try {
-        await busy(go, async () => {
-          const { data, error } = await sb.auth.signUp({ ...guest, options: { data: { name: name.value.trim() } } });
-          if (error) throw new Error(authMessage(error));
-          if (!data.session) throw new Error('En Supabase falta desactivar "Confirm email" (Authentication → Sign In / Providers → Email).');
-          try { localStorage.setItem(GUEST_KEY, JSON.stringify(guest)); } catch { /* sin almacenamiento: se pedirá el nombre de nuevo */ }
-          await enter();
-        }, 'Entrando…');
-      } catch (err) { toast(err.message, 'error'); }
+      // Se guarda antes de crear la cuenta: si algo falla, el siguiente intento usa la misma.
+      try { localStorage.setItem(GUEST_KEY, JSON.stringify(guest)); } catch { /* sin almacenamiento: se pedirá el nombre de nuevo */ }
+      try { await busy(go, () => enterAsGuest(guest), 'Entrando…'); } catch (err) { askName(err.message, guest.name); }
     });
     status.replaceChildren(form);
     name.focus();
@@ -117,12 +128,9 @@ function renderLogin() {
       const { data } = await sb.auth.getSession();
       if (data.session) return await enter();
       const saved = readGuest();
-      if (saved) {
-        const { error } = await sb.auth.signInWithPassword(saved);
-        if (!error) return await enter();
-      }
+      if (saved) return await enterAsGuest(saved);
       askName();
-    } catch (err) { askName(err.message); }
+    } catch (err) { askName(err.message, readGuest()?.name ?? ''); }
   })();
   return h('div', { class: 'login-wrap' }, card);
 }
