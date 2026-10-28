@@ -1,12 +1,12 @@
-// Ajustes de interfaz de la versión con Supabase: ingreso automático con la cuenta
-// de Google de la empresa, acceso con contraseña solo para cuentas de prueba
-// (#/acceso-demo) y videos por link en lugar de subir archivos.
+// Ajustes de interfaz de la versión con Supabase: entrada sin capa de ingreso
+// (para pruebas; al publicar con el Plataform Deployer, el Deployer pone su propio
+// acceso), acceso con contraseña para cuentas existentes en #/acceso-demo, y videos
+// por link en lugar de subir archivos.
 
 const AUTH_ERRORS = [
   [/invalid login credentials/i, 'Correo o contraseña incorrectos.'],
   [/already registered|already been registered|already exists/i, 'Ese correo ya tiene una cuenta. Ingresa con tu contraseña.'],
-  [/database error saving new user|solo se permiten correos/i, `Solo pueden entrar las cuentas @${ACADEMIA_CONFIG.domain}. Elige tu cuenta de la empresa.`],
-  [/access_denied|cancel/i, 'Cancelaste el ingreso con Google.'],
+  [/database error saving new user|solo se permiten correos/i, `Solo pueden entrar las cuentas @${ACADEMIA_CONFIG.domain}.`],
   [/email not confirmed/i, 'Primero confirma tu cuenta con el enlace que llegó a tu correo.'],
   [/password should be|weak password/i, 'La contraseña es muy débil: usa al menos 8 caracteres.'],
   [/rate limit|too many/i, 'Demasiados intentos seguidos. Espera un minuto e inténtalo de nuevo.'],
@@ -23,7 +23,7 @@ function renderPasswordLogin() {
   const intro = h('p', { class: 'muted' }, 'Tu espacio para aprender todo lo que necesitas en tus primeros días.');
   const submit = h('button', { class: 'btn btn-primary btn-block', type: 'submit' }, 'Entrar');
   const toggle = h('a', { href: '#/login', class: 'link-center' }, '¿Es tu primera vez? Crea tu cuenta');
-  const help = h('p', { class: 'small muted center' }, 'Acceso solo para cuentas de prueba. ', h('a', { href: '#/login' }, 'Entrar con mi cuenta de Plataform'));
+  const help = h('p', { class: 'small muted center' }, 'Acceso para cuentas con contraseña (administración y pruebas). ', h('a', { href: '#/login' }, 'Volver al inicio'));
   const paintMode = () => {
     nameField.classList.toggle('hidden', !creating);
     nameInput.required = creating;
@@ -67,62 +67,70 @@ function renderPasswordLogin() {
   return h('div', { class: 'login-wrap' }, form);
 }
 
-// Pantalla de ingreso: no pide datos. Si hay sesión entra directo; si no, lleva a
-// Google con la cuenta de la empresa. Tras "Salir" o un error muestra un botón,
-// para no entrar en un ciclo de redirecciones.
+// Entrada sin capa de ingreso: la primera vez solo pregunta el nombre y crea por
+// detrás una cuenta propia de este navegador (correo interno invitado.xxxx@ y clave
+// aleatoria guardados aquí); las siguientes veces entra directo.
+const GUEST_KEY = 'academia.invitado';
+const readGuest = () => { try { return JSON.parse(localStorage.getItem(GUEST_KEY)); } catch { return null; } };
+
 function renderLogin() {
-  const take = (k) => { try { const v = sessionStorage.getItem(k); sessionStorage.removeItem(k); return v; } catch { return null; } };
-  const status = h('div', { class: 'stack center' }, h('div', { class: 'spinner' }), h('p', { class: 'muted' }, 'Conectando con tu cuenta de Plataform…'));
+  const status = h('div', { class: 'stack center' }, h('div', { class: 'spinner' }), h('p', { class: 'muted' }, 'Abriendo la Academia…'));
   const card = h('div', { class: 'login-card card' },
     h('div', { class: 'brand brand-lg' }, h('span', { class: 'brand-mark' }, 'P'), h('span', {}, 'Academia')), status);
-  const goGoogle = async () => {
-    // Antes de salir hacia Google se confirma que el proveedor esté activo en Supabase;
-    // si no, se explica en pantalla en lugar de mostrar el error técnico de Supabase.
-    try {
-      const res = await fetch(`${ACADEMIA_CONFIG.url}/auth/v1/settings`, { headers: { apikey: ACADEMIA_CONFIG.key } });
-      const settings = res.ok ? await res.json() : null;
-      if (settings && !settings.external?.google) return showButton('El ingreso con Google todavía no está activado. Avísale a quien administra la Academia.', true);
-    } catch { return showButton('Sin conexión. Revisa tu internet e inténtalo de nuevo.'); }
-    try { sessionStorage.setItem('academia.oauth_at', String(Date.now())); } catch { /* sin almacenamiento */ }
-    const { error } = await sb.auth.signInWithOAuth({
-      provider: 'google',
-      options: { redirectTo: `${location.origin}${location.pathname}`, queryParams: { hd: ACADEMIA_CONFIG.domain, prompt: 'select_account' } },
-    });
-    if (error) showButton(authMessage(error));
+  const enter = async () => {
+    session.token = 'supabase';
+    afterLogin((await api('/api/me')).user);
   };
-  const showButton = (message, googleOff = false) => {
-    const btn = h('button', { class: 'btn btn-primary btn-block btn-lg', onclick: goGoogle }, 'Entrar con mi cuenta de Plataform');
-    status.replaceChildren(
+  const askName = (message) => {
+    const name = h('input', { name: 'name', required: true, minlength: 2, maxlength: 60, autocomplete: 'name', placeholder: 'Nombre y apellido', 'aria-label': 'Tu nombre' });
+    const go = h('button', { class: 'btn btn-primary btn-block btn-lg', type: 'submit' }, 'Empezar');
+    const form = h('form', { class: 'stack' },
       h('h1', {}, '¡Bienvenido! 👋'),
       h('p', { class: 'muted' }, 'Tu espacio para aprender todo lo que necesitas en tus primeros días.'),
       message && h('p', { class: 'login-error' }, message),
-      btn,
-      h('p', { class: 'small muted' }, `Usa tu correo @${ACADEMIA_CONFIG.domain}.`),
-      googleOff && h('a', { href: '#/acceso-demo', class: 'link-center small' }, 'Administración: entrar con contraseña mientras se activa Google'),
+      h('label', { class: 'field' }, '¿Cómo te llamas?', name),
+      go,
       h('a', { href: '#/jugar', class: 'link-center' }, '¿Tienes un PIN de juego? Únete aquí'));
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      if (name.value.trim().length < 2) return toast('Escribe tu nombre.', 'error');
+      const bytes = crypto.getRandomValues(new Uint8Array(18));
+      const guest = {
+        email: `invitado.${crypto.randomUUID().slice(0, 12)}@${ACADEMIA_CONFIG.domain}`,
+        password: btoa(String.fromCharCode(...bytes)),
+      };
+      try {
+        await busy(go, async () => {
+          const { data, error } = await sb.auth.signUp({ ...guest, options: { data: { name: name.value.trim() } } });
+          if (error) throw new Error(authMessage(error));
+          if (!data.session) throw new Error('En Supabase falta desactivar "Confirm email" (Authentication → Sign In / Providers → Email).');
+          try { localStorage.setItem(GUEST_KEY, JSON.stringify(guest)); } catch { /* sin almacenamiento: se pedirá el nombre de nuevo */ }
+          await enter();
+        }, 'Entrando…');
+      } catch (err) { toast(err.message, 'error'); }
+    });
+    status.replaceChildren(form);
+    name.focus();
   };
   (async () => {
-    const { data } = await sb.auth.getSession();
-    if (data.session) {
-      try {
-        session.token = 'supabase';
-        if (location.search) history.replaceState(null, '', `${location.pathname}${location.hash}`);
-        afterLogin((await api('/api/me')).user);
-      } catch (err) { showButton(err.message); }
-      return;
-    }
-    const error = take('academia.auth_error');
-    const loggedOut = take('academia.logged_out');
-    const lastTry = Number(take('academia.oauth_at') || 0);
-    if (error) return showButton(authMessage({ message: error }));
-    if (loggedOut || Date.now() - lastTry < 60000) return showButton();
-    goGoogle();
+    try {
+      const { data } = await sb.auth.getSession();
+      if (data.session) return await enter();
+      const saved = readGuest();
+      if (saved) {
+        const { error } = await sb.auth.signInWithPassword(saved);
+        if (!error) return await enter();
+      }
+      askName();
+    } catch (err) { askName(err.message); }
   })();
   return h('div', { class: 'login-wrap' }, card);
 }
 
-(globalThis.ACADEMIA_EXT ??= { routes: [], navLinks: [], adminTabs: [] }).routes.push(
-  { re: /^\/acceso-demo$/, view: renderPasswordLogin, public: true, bare: true });
+const ext = (globalThis.ACADEMIA_EXT ??= { routes: [], navLinks: [], adminTabs: [] });
+ext.routes.push({ re: /^\/acceso-demo$/, view: renderPasswordLogin, public: true, bare: true });
+// Sin capa de ingreso no hay "Salir": cerrar sesión crearía otra persona al volver.
+ext.hideLogout = true;
 
 // En esta versión los videos se agregan con un link.
 function uploadWithProgress() {

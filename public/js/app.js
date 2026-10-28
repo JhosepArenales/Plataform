@@ -46,7 +46,7 @@ function renderNav() {
       u?.role === 'admin' && link('/admin', [h('span', { class: 'lbl-long' }, 'Administrar'), h('span', { class: 'lbl-short' }, 'Admin')], (p) => p.startsWith('/admin'))),
     u && h('div', { class: 'nav-user' },
       h('span', { class: 'avatar', title: u.email }, u.name.slice(0, 1).toUpperCase()),
-      h('button', { class: 'btn btn-ghost btn-sm', onclick: logout }, 'Salir')));
+      !globalThis.ACADEMIA_EXT?.hideLogout && h('button', { class: 'btn btn-ghost btn-sm', onclick: logout }, 'Salir')));
   document.body.classList.toggle('admin-mode', path.startsWith('/admin'));
 }
 

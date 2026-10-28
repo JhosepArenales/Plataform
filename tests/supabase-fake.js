@@ -27,8 +27,6 @@ export async function startFakeSupabase() {
   await db.exec(fs.readFileSync(new URL('../supabase/schema.sql', import.meta.url), 'utf8'));
 
   const accounts = new Map(); // email → { id, password, name }
-  const codes = new Map(); // código de un solo uso → { account, challenge }
-  const google = { enabled: true, email: null, name: null }; // cuenta de Google con la que "entra" el navegador
   const tokens = new Map(); // access_token → user id
   let queue = Promise.resolve();
   const serial = (fn) => { const run = queue.then(fn, fn); queue = run.catch(() => {}); return run; };
@@ -98,37 +96,6 @@ export async function startFakeSupabase() {
         return [500, { code: 500, error_code: 'unexpected_failure', msg: 'Database error saving new user' }];
       }
     }
-    // Ingreso con Google (simulado): /authorize vuelve a la app con ?code= y el
-    // cliente lo cambia por la sesión con grant_type=pkce, como en Supabase.
-    if (req.method === 'GET' && url.pathname === '/auth/v1/settings') return [200, { external: { email: true, google: google.enabled } }];
-    if (req.method === 'GET' && url.pathname === '/auth/v1/authorize') {
-      if (!google.enabled) return [400, { code: 400, error_code: 'validation_failed', msg: 'Unsupported provider: provider is not enabled' }];
-      const back = new URL(url.searchParams.get('redirect_to'));
-      if (!google.email) { back.searchParams.set('error', 'access_denied'); return [302, null, { Location: back.href }]; }
-      let a = accounts.get(google.email);
-      if (!a) {
-        try {
-          const r = await db.query(`insert into auth.users (email, raw_user_meta_data) values ($1, $2::jsonb) returning id`, [google.email, JSON.stringify({ name: google.name, full_name: google.name })]);
-          a = { id: r.rows[0].id, email: google.email, password: null, name: google.name };
-          accounts.set(google.email, a);
-        } catch {
-          back.searchParams.set('error', 'server_error');
-          back.searchParams.set('error_description', 'Database error saving new user');
-          return [302, null, { Location: back.href }];
-        }
-      }
-      const code = crypto.randomUUID();
-      codes.set(code, { account: a, challenge: url.searchParams.get('code_challenge') });
-      back.searchParams.set('code', code);
-      return [302, null, { Location: back.href }];
-    }
-    if (req.method === 'POST' && url.pathname === '/auth/v1/token' && url.searchParams.get('grant_type') === 'pkce') {
-      const entry = codes.get(body.auth_code);
-      codes.delete(body.auth_code);
-      const expected = entry && crypto.createHash('sha256').update(String(body.code_verifier ?? '')).digest('base64url');
-      if (!entry || expected !== entry.challenge) return [400, { code: 400, error_code: 'bad_code_verifier', msg: 'invalid flow state' }];
-      return [200, sessionFor(entry.account)];
-    }
     if (req.method === 'POST' && url.pathname === '/auth/v1/token' && url.searchParams.get('grant_type') === 'password') {
       const a = accounts.get(String(body.email ?? '').toLowerCase());
       if (!a || a.password !== body.password) return [400, { code: 400, error_code: 'invalid_credentials', msg: 'Invalid login credentials' }];
@@ -161,9 +128,6 @@ export async function startFakeSupabase() {
   return {
     url: `http://127.0.0.1:${server.address().port}`,
     db,
-    // Define con qué cuenta de Google entra el próximo navegador (null = cancela).
-    signInWithGoogleAs: (email, name = email) => { google.email = email; google.name = name; },
-    setGoogleEnabled: (on) => { google.enabled = on; },
     // Consulta directa como la persona indicada (para comprobar permisos de tablas).
     asUser: (userId, sql) => db.transaction(async (tx) => {
       await tx.query(`select set_config('request.jwt.claim.sub', $1, true)`, [userId ?? '']);
