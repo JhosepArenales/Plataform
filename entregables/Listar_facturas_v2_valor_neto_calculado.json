@@ -1,0 +1,154 @@
+{
+  "name": "PRUEBA - Listar facturas por NIT emisor (BigQuery) v2",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "Listar_facturas",
+        "responseMode": "responseNode",
+        "options": {
+          "allowedOrigins": "*"
+        }
+      },
+      "id": "04d8dc67-eb16-415d-ac0c-9e31999286a3",
+      "name": "Webhook: listar facturas",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        3424,
+        2144
+      ],
+      "webhookId": "Listar_facturas"
+    },
+    {
+      "parameters": {
+        "jsCode": "const nitEmisor = String($input.first().json.query.nitEmisor || '').replace(/\\D/g, '');\nif (!nitEmisor) {\n  throw new Error('Falta el parámetro nitEmisor en la consulta.');\n}\n\nconst columnas = [\n  'nit_emisor', 'nit_pagador', 'pagador', 'numero_factura',\n  'fecha_vencimiento', 'valor_neto', 'valor_neto_calculado', 'cufe'\n].join(', ');\n\nconst tabla = '`inlaid-stack-375114.analytics_data_products.opportunity_mapping`';\n\n// nit_emisor se limpia a solo dígitos para que coincida sin importar si viene con puntos o DV.\nconst bqQuery = 'SELECT ' + columnas + ' FROM ' + tabla +\n  \" WHERE REGEXP_REPLACE(CAST(nit_emisor AS STRING), r'[^0-9]', '') = '\" + nitEmisor + \"'\";\n\nreturn [{ json: { nitEmisor, bqQuery } }];"
+      },
+      "id": "251aba95-0358-4a3e-8b0d-ea619ea87176",
+      "name": "Construir SQL",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3664,
+        2144
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://bigquery.googleapis.com/bigquery/v2/projects/inlaid-stack-375114/queries",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleApi",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { query: $json.bqQuery, useLegacySql: false, timeoutMs: 30000 } }}",
+        "options": {}
+      },
+      "id": "96aacf24-f094-44cd-b796-8305512b0f72",
+      "name": "BigQuery: listar facturas",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        3904,
+        2144
+      ],
+      "credentials": {
+        "googleApi": {
+          "id": "zDQ7OLqtmEiki20W",
+          "name": "Bigquery"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const resp = $input.first().json;\nconst fields = (resp.schema && resp.schema.fields) || [];\nconst rawRows = resp.rows || [];\n\nconst rows = rawRows.map(row => {\n  const obj = {};\n  row.f.forEach((cell, i) => { obj[fields[i].name] = cell.v; });\n  return obj;\n});\n\n// Valor: la API de BigQuery devuelve los números como texto (ej. \"2.6283471E7\").\n// Si no es un número directo, se limpia como en la calculadora (puntos de miles, coma decimal).\nfunction parseValor(v){\n  if (v === null || v === undefined || v === '') return 0;\n  const n = Number(v);\n  if (isFinite(n)) return n;\n  const s = String(v).replace(/[^0-9.,-]/g, '').replace(/\\./g, '').replace(',', '.');\n  return parseFloat(s) || 0;\n}\n// Fecha: puede llegar como 2026-08-10 o como 2026.08.10 (según la calculadora-mapeo). Se deja en AAAA-MM-DD.\nfunction parseFecha(v){\n  const s = String(v || '').trim();\n  const m = s.match(/^(\\d{4})[-.\\/](\\d{1,2})[-.\\/](\\d{1,2})/);\n  if (m) return m[1] + '-' + m[2].padStart(2, '0') + '-' + m[3].padStart(2, '0');\n  const m2 = s.match(/^(\\d{1,2})\\/(\\d{1,2})\\/(\\d{4})/);\n  if (m2) return m2[3] + '-' + m2[2].padStart(2, '0') + '-' + m2[1].padStart(2, '0');\n  return s;\n}\n\nconst facturas = rows.map(r => ({\n  nitPagador: String(r.nit_pagador || '').replace(/\\D/g, ''),\n  pagador: r.pagador || '',\n  folio: r.numero_factura || '',\n  vencimiento: parseFecha(r.fecha_vencimiento),\n  // Pruebas piloto (5-nov-2026): se usa el valor neto calculado de opportunity_mapping (valor neto menos retenciones);\n  // si viene vacío, el valor neto. Así no hay que corregir valores a mano en la operación.\n  valor: (r.valor_neto_calculado !== null && r.valor_neto_calculado !== undefined && r.valor_neto_calculado !== '') ? parseValor(r.valor_neto_calculado) : parseValor(r.valor_neto),\n  valorNeto: parseValor(r.valor_neto),\n  cufe: r.cufe || ''\n}));\n\nreturn [{ json: { encontrado: facturas.length > 0, facturas } }];"
+      },
+      "id": "f5b7e7ee-8df4-4280-967d-45250bc231b9",
+      "name": "Formatear respuesta",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4144,
+        2144
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json }}",
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Access-Control-Allow-Origin",
+                "value": "*"
+              }
+            ]
+          }
+        }
+      },
+      "id": "9f6bd012-a7b4-4402-a8cf-d365a3a36719",
+      "name": "Responder al panel",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        4384,
+        2144
+      ]
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Webhook: listar facturas": {
+      "main": [
+        [
+          {
+            "node": "Construir SQL",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Construir SQL": {
+      "main": [
+        [
+          {
+            "node": "BigQuery: listar facturas",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "BigQuery: listar facturas": {
+      "main": [
+        [
+          {
+            "node": "Formatear respuesta",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Formatear respuesta": {
+      "main": [
+        [
+          {
+            "node": "Responder al panel",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "nodeGroups": [],
+  "tags": []
+}
