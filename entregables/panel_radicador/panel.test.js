@@ -40,7 +40,7 @@ function cargarPanel() {
   const localStorage = { getItem() { return null; }, setItem() {} };
   const fetch = () => Promise.reject(new Error('sin red en pruebas'));
   const fn = new Function('document', 'localStorage', 'fetch',
-    script + '\n;return { setFeeManual: function(v){ feeManualPct = v; }, setOperaciones: function(o){ operaciones = o; }, datosCotizacion, construirCotizacionPDF, crearCarpetaYCotizacion, setFetch: function(f){ fetch = f; }, setEmisorRiesgo: function(e){ emisorRiesgo = e; }, pintar_validaciones, setFee30: function(v){ fee30Pct = v; }, feeEAAplicado, pintar_liquidacion, postBigQuery, listarPagadores, getPagadores: function(){ return pagadoresDisponibles; }, setToken: function(v){ consultaEmisorToken = v; }, setEsperaBQ: function(v){ ESPERA_BQ_MS = v; }, PdfSimple, mapeoFacturasCSV, esSi, CARPETA_WEBHOOK_URL, feeAplicado, feeEsManual, liquidar, feePeriodo, tasaMaximaFinalCliente, tasaMaximaInversionista, PARAMS, ' +
+    script + '\n;return { setFeeManual: function(v){ feeManualPct = v; }, setOperaciones: function(o){ operaciones = o; }, datosCotizacion, construirCotizacionPDF, crearCarpetaYCotizacion, setFetch: function(f){ fetch = f; }, setEmisorRiesgo: function(e){ emisorRiesgo = e; }, pintar_validaciones, setFee30: function(v){ fee30Pct = v; }, feeEAAplicado, pintar_liquidacion, postBigQuery, resolverPlazo, construir_payload, activarOperacion, leerCondiciones, todasGuardadas, getVista: function(){ return operacion_vista; }, getOperaciones: function(){ return operaciones; }, listarPagadores, getPagadores: function(){ return pagadoresDisponibles; }, setToken: function(v){ consultaEmisorToken = v; }, setEsperaBQ: function(v){ ESPERA_BQ_MS = v; }, PdfSimple, mapeoFacturasCSV, esSi, CARPETA_WEBHOOK_URL, feeAplicado, feeEsManual, liquidar, feePeriodo, tasaMaximaFinalCliente, tasaMaximaInversionista, PARAMS, ' +
     'CUPO_WEBHOOK_URL, LISTAR_PAGADORES_WEBHOOK_URL, LISTAR_FACTURAS_WEBHOOK_URL, RADICAR_WEBHOOK_URL, MAX_PAGADORES };');
   return { api: fn(document, localStorage, fetch), els };
 }
@@ -300,7 +300,7 @@ test('la carpeta recibe las facturas seleccionadas para armar el mapeo de Produc
   await api.crearCarpetaYCotizacion({ dias: 55, diasPTG: 55, pagoAjustado: new Date(2026, 11, 21) }, []);
   assert.equal(enviado.mapeo.nitEmisor, '901314381');
   assert.equal(enviado.mapeo.fechaAproximadaPago, '2026.12.21');
-  assert.deepEqual(enviado.mapeo.facturas, [{ cufe: 'abc', numeroFactura: 'SIA9016', nitPagador: '900497538' }]);
+  assert.deepEqual(enviado.mapeo.facturas, [{ cufe: 'abc', numeroFactura: 'SIA9016', nitPagador: '900497538', fechaAproximadaPago: '2026.12.21' }]);
 });
 
 test('bloqueo por mora suspendido para pruebas: la mora se avisa en amarillo y no bloquea', () => {
@@ -428,8 +428,44 @@ test('pagadores viables sin facturas también aparecen (marcados con 0), despué
   assert.ok(leerHtml().includes("' (0 – sin facturas en la base)'"));
 });
 
+test('la fecha de pago no se mueve si cae en fin de semana: se usan los días digitados y queda la alerta', () => {
+  const { api, els } = cargarPanel();
+  const hoy = new Date(); const iso = (d) => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+  let dias = 120; while (new Date(hoy.getFullYear(), hoy.getMonth(), hoy.getDate() + dias).getDay() !== 6) dias++;   // primer sábado desde 120 días
+  els.c_desembolso.value = iso(hoy);
+  els.c_dias.value = String(dias);
+  const p = api.resolverPlazo();
+  assert.equal(p.dias, dias, 'no suma días por el fin de semana');
+  assert.equal(p.pagoAjustado.getDay(), 6);
+  assert.equal(p.ajustado, true, 'marca que cae en día no hábil para mostrar la alerta');
+});
+
+test('condiciones por pagador: cada operación guarda su anticipo y plazo, y el payload lleva las de cada una', () => {
+  const { api, els } = cargarPanel();
+  els.c_tasa_inv.value = '16';
+  api.setOperaciones([{ nit: '1', razon_social: 'ALPINA', facturas: [{ folio: 'A1', valor: 1000000 }], cond: null, guardado: null }]);
+  els.c_anticipo.value = '90'; els.c_dias.value = '60';
+  const ops = api.getOperaciones();
+  ops[0].cond = api.leerCondiciones(); ops[0].guardado = JSON.stringify([ops[0].nit, ['A1|'], ops[0].cond]);
+  assert.equal(api.todasGuardadas(), true);
+  ops.push({ nit: '2', razon_social: 'NOEL', facturas: [{ folio: 'N1', valor: 2000000 }], cond: null, guardado: null });
+  api.activarOperacion(1);
+  assert.equal(api.getVista(), 1);
+  els.c_anticipo.value = '80'; els.c_dias.value = '45';
+  assert.equal(api.todasGuardadas(), false, 'la segunda aún no está guardada');
+  const pl = api.construir_payload();
+  assert.equal(pl.operaciones[0].condiciones.anticipoPct, 90);
+  assert.equal(pl.operaciones[1].condiciones.anticipoPct, 80);
+  assert.equal(pl.operaciones[0].liquidacion.anticipo, 900000);
+  assert.equal(pl.operaciones[1].liquidacion.anticipo, 1600000);
+  assert.equal(pl.condiciones.anticipoPct, 90, 'las condiciones del negocio son las de la primera operación');
+  api.activarOperacion(0);
+  assert.equal(els.c_anticipo.value, '90', 'al volver a la primera se cargan sus condiciones');
+  assert.equal(api.getOperaciones()[1].cond.c_anticipo, '80', 'lo digitado en la segunda no se pierde');
+});
+
 test('index.html llegó idéntico al probado (huella SHA-256)', () => {
   const contenido = leerHtml().replace(/\r\n/g, '\n').replace(/\s+$/, '');
   const huella = require('node:crypto').createHash('sha256').update(contenido).digest('hex');
-  assert.equal(huella, 'd8d167dc027c9967792c1c2841f7b74a5b9aeb71d6d39692a3e20d38e136628e');
+  assert.equal(huella, '57bf3759484ed1967277497532b6ca483b7bf0ed8576d0fc4c2769a129113717');
 });

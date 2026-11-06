@@ -175,7 +175,7 @@ td input{padding:5px 7px;font-size:12.5px}
           <button class="pv_boton" id="b_agregar_pagador">Agregar pagador</button>
         </div>
         <div class="pv_cuerpo">
-          <p class="pv_ayuda" style="margin:0 0 12px">Cada pagador es una operación independiente, con su propia liquidación. Aparecen todos los pagadores viables del emisor (máximo 10 operaciones por radicación); entre paréntesis, cuántas facturas tiene cada uno en la base. Primero salen los que tienen facturas.</p>
+          <p class="pv_ayuda" style="margin:0 0 12px">Cada pagador es una operación independiente, con su propia liquidación. Aparecen todos los pagadores viables del emisor (máximo 10 operaciones por radicación); entre paréntesis, cuántas facturas tiene cada uno en la base. Primero salen los que tienen facturas. Cada pagador tiene su propio plazo, anticipo y tasas: llena sus condiciones, dale <b>Guardar operación</b> y luego puedes agregar el siguiente pagador.</p>
           <div id="lista_operaciones"></div>
           <div class="pv_nota aviso" id="nota_pagadores"></div>
         </div>
@@ -185,7 +185,8 @@ td input{padding:5px 7px;font-size:12.5px}
       <div class="pv_bloque">
         <div class="pv_bloque_cabeza"><h2><span class="pv_paso">3</span>Plazo de la operación</h2></div>
         <div class="pv_cuerpo">
-          <p class="pv_ayuda" style="margin:0 0 10px">La fecha de pago se ajusta sola si cae en día no hábil en Colombia.</p>
+          <p class="pv_ayuda" style="margin:0 0 10px">Si la fecha de pago cae en día no hábil en Colombia se muestra una alerta; la fecha no se mueve y se usan los días digitados.</p>
+          <p class="pv_nota aviso ver" id="txt_editando" style="margin:0 0 10px"></p>
           <div class="pv_rejilla">
             <div><label for="c_desembolso">Fecha de desembolso (aprox.)</label><input type="date" id="c_desembolso"></div>
             <div><label for="c_modo_plazo">Plazo definido por</label>
@@ -279,6 +280,7 @@ td input{padding:5px 7px;font-size:12.5px}
     </div>
     <div style="display:flex;gap:8px">
       <button class="pv_boton" id="b_limpiar">Limpiar</button>
+      <button class="pv_boton" id="b_guardar_op">Guardar operación</button>
       <button class="pv_boton pv_boton_principal" id="b_confirmar">Crear radicación y carpeta</button>
     </div>
   </div>
@@ -327,7 +329,8 @@ function ptgAbogados(numFacturas, diasDesembolsoPago){
    ================================================================== */
 function operacionVacia(){
   // facturas = las seleccionadas de la base (opportunity_mapping) para este pagador.
-  return { nit:"", razon_social:"", cupoDisponible:null, estadoCupo:null, diasMora:null, confirmacionCorreo:null, mecanismoNegociacion:null, pagoDirecto:null, facturas:[] };
+  // cond = condiciones propias de este pagador (plazo, anticipo, tasas); guardado = firma al darle "Guardar operación".
+  return { nit:"", razon_social:"", cupoDisponible:null, estadoCupo:null, diasMora:null, confirmacionCorreo:null, mecanismoNegociacion:null, pagoDirecto:null, facturas:[], cond:null, guardado:null };
 }
 var operaciones = [operacionVacia()];
 var operacion_vista = 0;
@@ -406,8 +409,10 @@ function resolverPlazo(){
     ? (parseISO(val("c_fecha_pago")) || desembolso)
     : addDays(desembolso, num("c_dias"));
   var fechaInvalida = pagoBruto <= desembolso;
-  var pagoAjustado = siguienteDiaHabilCO(pagoBruto);
-  var ajustado = isoLocal(pagoBruto) !== isoLocal(pagoAjustado);
+  // Pruebas piloto (6-nov-2026): la fecha de pago NO se mueve si cae en día no hábil; se usan los días
+  // digitados y solo se muestra la alerta. "ajustado" indica que cae en día no hábil.
+  var pagoAjustado = pagoBruto;
+  var ajustado = !esDiaHabilCO(pagoBruto);
   // F35 de la calculadora: días = fecha de pago − fecha de cotización (hoy). PTG usa pago − desembolso.
   var hoyCot = parseISO(isoLocal(new Date()));
   var dias = Math.max(0, Math.round((pagoAjustado - hoyCot) / 86400000));
@@ -615,6 +620,55 @@ function seleccionarPagador(io, nitPagador){
 function claveFactura(f){ return (f.folio || "") + "|" + (f.cufe || ""); }
 
 /* ==================================================================
+   Condiciones por pagador (pruebas piloto 6-nov-2026): plazo, anticipo y tasas
+   se guardan por operación. El formulario (secciones 3 y 4) edita la operación activa.
+   ================================================================== */
+var CAMPOS_COND = ["c_desembolso","c_modo_plazo","c_dias","c_fecha_pago","c_anticipo","c_fondeo","c_tasa_inv","c_fee","c_fee_periodo"];
+function leerCondiciones(){
+  var c = { fng: marcado("c_fng"), fee30Pct: fee30Pct, feeManualPct: feeManualPct };
+  CAMPOS_COND.forEach(function(id){ c[id] = val(id); });
+  return c;
+}
+function ponerCondiciones(c){
+  CAMPOS_COND.forEach(function(id){ $(id).value = c[id]; });
+  $("c_fng").checked = !!c.fng;
+  fee30Pct = c.fee30Pct;
+  feeManualPct = c.feeManualPct;
+}
+// Ejecuta fn(plazo) con las condiciones guardadas de esa operación (la activa usa el formulario tal cual).
+function usarCondiciones(op, fn, plazoDado){
+  if(!op || !op.cond || operaciones[operacion_vista] === op){ return fn(plazoDado || resolverPlazo()); }
+  var actual = leerCondiciones();
+  ponerCondiciones(op.cond);
+  try{ return fn(resolverPlazo()); } finally { ponerCondiciones(actual); }
+}
+function firmaOperacion(op, cond){ return JSON.stringify([op.nit, op.facturas.map(claveFactura), cond]); }
+function estaGuardada(op, io){
+  if(!op.guardado){ return false; }
+  return op.guardado === firmaOperacion(op, io === operacion_vista ? leerCondiciones() : op.cond);
+}
+function todasGuardadas(){ return operaciones.every(function(op, io){ return estaGuardada(op, io); }); }
+function nombreOperacion(op, io){ return op.razon_social || ("Operación " + (io+1)); }
+// Pasa el formulario a otra operación: guarda lo digitado en la actual y carga lo de la otra.
+function activarOperacion(i){
+  if(!operaciones[i]){ return; }
+  if(i !== operacion_vista && operaciones[operacion_vista]){ operaciones[operacion_vista].cond = leerCondiciones(); }
+  operacion_vista = i;
+  if(operaciones[i].cond){ ponerCondiciones(operaciones[i].cond); }
+  var porFecha = val("c_modo_plazo") === "fechas";
+  $("w_dias").style.display = porFecha ? "none" : "";
+  $("w_fecha_pago").style.display = porFecha ? "" : "none";
+  aplicarTipoFondeo();
+  recalcular(true);
+}
+// Validaciones en rojo de una operación, con sus propias condiciones.
+function bloqueosOperacion(io){
+  var op = operaciones[io];
+  return usarCondiciones(op, function(plazo){ return calcularAvisos(plazo, io).filter(function(a){ return a[0] === "mal"; }).length; });
+}
+function bloqueosTotales(){ return operaciones.reduce(function(t, op, io){ return t + bloqueosOperacion(io); }, 0); }
+
+/* ==================================================================
    Tipo de fondeo (misma regla de la calculadora oficial)
    ================================================================== */
 function aplicarTipoFondeo(){
@@ -743,6 +797,8 @@ function pintar_operaciones(){
       '<div class="pv_operacion_cabeza">' +
         '<span class="pv_operacion_titulo">' + escapeHtml(operacion.razon_social || ("Operación " + (io+1))) + '</span>' +
         '<span class="pv_chip">' + operacion.facturas.length + ' facturas</span>' +
+        '<span class="pv_chip" id="estado_op_' + io + '"></span>' +
+        (io === operacion_vista ? '<span class="pv_chip pv_chip_ok">Editando condiciones</span>' : '<button type="button" class="pv_boton_texto" data-editar-op="' + io + '">Ver / editar condiciones</button>') +
         (hayCupo ? '<span class="pv_chip ' + (excede ? "pv_chip_mal" : "pv_chip_ok") + '">' + pesos(total) + ' de ' + pesos(operacion.cupoDisponible) + ' de cupo</span>' : '') +
         '<button class="pv_quitar" style="margin-left:auto" data-quitar-op="' + io + '" aria-label="Quitar operación">×</button>' +
       '</div>' +
@@ -779,12 +835,16 @@ function pintar_operaciones(){
       recalcular(true);
     });
   });
+  caja.querySelectorAll("[data-editar-op]").forEach(function(boton){
+    boton.addEventListener("click", function(){ activarOperacion(parseInt(this.dataset.editarOp,10)); });
+  });
   caja.querySelectorAll("[data-quitar-op]").forEach(function(boton){
     boton.addEventListener("click", function(){
+      if(operaciones[operacion_vista]){ operaciones[operacion_vista].cond = leerCondiciones(); }
       operaciones.splice(parseInt(this.dataset.quitarOp,10),1);
       if(!operaciones.length){ operaciones.push(operacionVacia()); }
-      operacion_vista = 0;
-      recalcular(true);
+      operacion_vista = -1;
+      activarOperacion(0);
     });
   });
 }
@@ -794,7 +854,7 @@ function pintar_operaciones(){
    de la calculadora-mapeo. "mal" bloquea la radicación; "na" = sin dato
    en el mapeo, no se valida; "avi" = se muestra, no bloquea.
    ================================================================== */
-function pintar_validaciones(plazo){
+function calcularAvisos(plazo, soloIo){
   var avisos = [];
   var dias = plazo.dias;
   var pctAnticipo = num("c_anticipo");
@@ -845,6 +905,7 @@ function pintar_validaciones(plazo){
   }
 
   operaciones.forEach(function(operacion, io){
+    if(soloIo != null && io !== soloIo){ return; }
     var etiqueta = operacion.razon_social || ("Operación " + (io+1));
     if(!operacion.nit){ avisos.push(["mal", etiqueta + ": elige el pagador."]); return; }
     var total = operacion.facturas.reduce(function(a,f){ return a + (Number(f.valor)||0); },0);
@@ -856,6 +917,15 @@ function pintar_validaciones(plazo){
     if(Number(operacion.diasMora) > 0){ avisos.push(BLOQUEAR_POR_MORA ? ["mal", etiqueta + ": pagador bloqueado por mora (" + operacion.diasMora + " días)."] : ["avi", etiqueta + ": pagador con " + operacion.diasMora + " días de mora. Bloqueo suspendido temporalmente para pruebas."]); }
   });
 
+  return avisos;
+}
+
+function pintar_validaciones(plazo){
+  var avisos = calcularAvisos(plazo);
+  // Operaciones sin guardar: aviso (no cuenta como validación en rojo; el botón Crear lo exige aparte).
+  operaciones.forEach(function(op, io){
+    if(op.nit && !estaGuardada(op, io)){ avisos.push(["avi", nombreOperacion(op, io) + ": condiciones sin guardar (botón Guardar operación)."]); }
+  });
   $("caja_validaciones").innerHTML = avisos.map(function(a){
     return '<div class="pv_val pv_val_' + a[0] + '"><span class="pv_punto"></span><span>' + escapeHtml(a[1]) + '</span></div>';
   }).join("");
@@ -947,72 +1017,82 @@ function recalcular(repintar){
   $("c_dias_usados").value = plazo.dias + (plazo.dias===1 ? " día" : " días");
   var notaFestivo = $("nota_festivo");
   if(plazo.ajustado){
-    notaFestivo.textContent = "La fecha de pago cae en " + motivoNoHabil(plazo.pagoBruto) + " (" + fmtFecha(plazo.pagoBruto) + "). Se movió automáticamente al siguiente día hábil: " + fmtFecha(plazo.pagoAjustado) + ".";
+    notaFestivo.textContent = "La fecha de pago cae en " + motivoNoHabil(plazo.pagoBruto) + " (" + fmtFecha(plazo.pagoBruto) + "). No se mueve: el cálculo usa los " + plazo.dias + " días digitados. Confirma con el pagador el día real de pago.";
     notaFestivo.className = "pv_nota aviso ver";
   } else {
     notaFestivo.className = "pv_nota aviso";
   }
 
   if(repintar){ pintar_operaciones(); }
-  $("b_agregar_pagador").disabled = operaciones.length >= MAX_PAGADORES;
-  $("b_agregar_pagador").title = operaciones.length >= MAX_PAGADORES ? "Máximo " + MAX_PAGADORES + " operaciones por radicación." : "";
+  var guardadas = todasGuardadas();
+  operaciones.forEach(function(op, io){
+    var chip = $("estado_op_" + io);
+    var ok = estaGuardada(op, io);
+    chip.textContent = ok ? "Guardada ✓" : "Sin guardar";
+    chip.className = "pv_chip " + (ok ? "pv_chip_ok" : "pv_chip_mal");
+  });
+  var activa = operaciones[operacion_vista];
+  $("txt_editando").textContent = activa ? "Estás editando el plazo, anticipo y tasas de: " + nombreOperacion(activa, operacion_vista) +
+    (operaciones.length > 1 ? " (operación " + (operacion_vista + 1) + " de " + operaciones.length + ")" : "") + "." : "";
+  $("b_agregar_pagador").disabled = operaciones.length >= MAX_PAGADORES || !guardadas;
+  $("b_agregar_pagador").title = operaciones.length >= MAX_PAGADORES ? "Máximo " + MAX_PAGADORES + " operaciones por radicación." : (!guardadas ? "Guarda la operación actual antes de agregar otro pagador." : "");
   var bloqueos = pintar_validaciones(plazo);
   pintar_liquidacion(plazo);
 
   var totalFacturas = 0, totalNeto = 0;
   operaciones.forEach(function(op, io){
-    var l = liquidar(op, io, plazo);
+    var l = usarCondiciones(op, function(p){ return liquidar(op, io, p); }, plazo);
     totalFacturas += l.valorFactura;
     totalNeto += l.anticipoNeto;
   });
   $("pie_titulo").textContent = operaciones.length + (operaciones.length===1 ? " operación" : " operaciones") + " por " + pesos(totalFacturas);
   $("pie_sub").textContent = bloqueos
     ? bloqueos + (bloqueos===1 ? " validación sin pasar" : " validaciones sin pasar")
-    : "Valor que recibe hoy (total): " + pesos(totalNeto);
-  $("b_confirmar").disabled = bloqueos > 0 || radicando;
-  $("b_confirmar").title = bloqueos ? "Corrige las validaciones en rojo antes de radicar." : "";
+    : (!guardadas ? "Guarda la operación para poder crear la radicación." : "Valor que recibe hoy (total): " + pesos(totalNeto));
+  $("b_guardar_op").disabled = radicando || !activa || estaGuardada(activa, operacion_vista);
+  $("b_confirmar").disabled = bloqueos > 0 || !guardadas || radicando;
+  $("b_confirmar").title = bloqueos ? "Corrige las validaciones en rojo antes de radicar." : (!guardadas ? "Guarda todas las operaciones antes de crear la radicación." : "");
 }
 
 /* ==================================================================
    Envío del borrador a n8n → HubSpot + BigQuery
    ================================================================== */
-function construir_payload(){
-  var plazo = resolverPlazo();
+// Condiciones del formulario tal como están (se llama dentro de usarCondiciones para cada operación).
+function condicionesActuales(plazo){
   var e = emisorRiesgo || {};
   return {
-    nitEmisor: soloDigitos(val("c_nit")),
-    nombreEmisor: val("c_razon_emisor"),
-    comercial: val("c_comercial").trim(),
-    esPrimeraOperacion: marcado("c_primera"),
-    tipoOperacion: val("c_tipo"),
-    condiciones: {
-      anio: parseInt(val("c_anio"),10),
-      anticipoPct: num("c_anticipo"),
-      anticipoMaximoAprobado: hayDato(e.anticipoPactado) ? e.anticipoPactado : null,
-      tipoFondeo: val("c_fondeo"),
-      tasaInversionistaEA: val("c_fondeo") === "propia" ? 0 : num("c_tasa_inv"),
-      feePlataformEA: Math.round(feeEABase() * 100 * 1000) / 1000,
-      feePlataform30Pct: Math.round(feeBase30() * 100 * 1000) / 1000,
-      feePlataformAjustado: fee30EsManual(),
-      aplicaFNG: marcado("c_fng"),
-      fechaDesembolso: isoLocal(plazo.desembolso),
-      fechaPagoEfectiva: isoLocal(plazo.pagoAjustado),
-      plazoDias: plazo.dias,
-      plazoMaximoAprobado: hayDato(e.plazoPactado) ? e.plazoPactado : null,
-      // Máxima inversionista = tasa inversionista; máxima final = (1+inv)(1+fee)−1 (Tasa Total, calculadora de Karen).
-      tasaMaximaInversionistaEA: tasaMaximaInversionista(),
-      tasaMaximaFinalClienteEA: tasaMaximaFinalCliente(plazo.dias),
-      feeAplicadoEA: Math.round(feeEAAplicado(plazo.dias) * 100 * 1000) / 1000,
-      feePeriodoPct: Math.round(feeAplicado(plazo.dias) * 100 * 1000) / 1000,
-      feePeriodoAutomaticoPct: Math.round(feePeriodo(plazo.dias) * 100 * 1000) / 1000,
-      feeAjustadoManual: feeEsManual(plazo.dias),
-      retenciones: {
-        reteFuente: { aplica: marcado("c_rf"), tasaPct: num("c_tasa_rf") },
-        reteIca: { aplica: marcado("c_ri"), tasaPct: num("c_tasa_ri") },
-        reteIva: { aplica: marcado("c_riva"), tasaPct: num("c_tasa_riva") }
-      }
-    },
-    operaciones: operaciones.map(function(op, io){
+    anio: parseInt(val("c_anio"),10),
+    anticipoPct: num("c_anticipo"),
+    anticipoMaximoAprobado: hayDato(e.anticipoPactado) ? e.anticipoPactado : null,
+    tipoFondeo: val("c_fondeo"),
+    tasaInversionistaEA: val("c_fondeo") === "propia" ? 0 : num("c_tasa_inv"),
+    feePlataformEA: Math.round(feeEABase() * 100 * 1000) / 1000,
+    feePlataform30Pct: Math.round(feeBase30() * 100 * 1000) / 1000,
+    feePlataformAjustado: fee30EsManual(),
+    aplicaFNG: marcado("c_fng"),
+    fechaDesembolso: isoLocal(plazo.desembolso),
+    fechaPagoEfectiva: isoLocal(plazo.pagoAjustado),
+    plazoDias: plazo.dias,
+    plazoMaximoAprobado: hayDato(e.plazoPactado) ? e.plazoPactado : null,
+    // Máxima inversionista = tasa inversionista; máxima final = (1+inv)(1+fee)−1 (Tasa Total, calculadora de Karen).
+    tasaMaximaInversionistaEA: tasaMaximaInversionista(),
+    tasaMaximaFinalClienteEA: tasaMaximaFinalCliente(plazo.dias),
+    feeAplicadoEA: Math.round(feeEAAplicado(plazo.dias) * 100 * 1000) / 1000,
+    feePeriodoPct: Math.round(feeAplicado(plazo.dias) * 100 * 1000) / 1000,
+    feePeriodoAutomaticoPct: Math.round(feePeriodo(plazo.dias) * 100 * 1000) / 1000,
+    feeAjustadoManual: feeEsManual(plazo.dias),
+    retenciones: {
+      reteFuente: { aplica: marcado("c_rf"), tasaPct: num("c_tasa_rf") },
+      reteIca: { aplica: marcado("c_ri"), tasaPct: num("c_tasa_ri") },
+      reteIva: { aplica: marcado("c_riva"), tasaPct: num("c_tasa_riva") }
+    }
+  };
+}
+
+function construir_payload(){
+  // Cada operación lleva sus propias condiciones; "condiciones" de arriba = las de la primera (datos del negocio).
+  var ops = operaciones.map(function(op, io){
+    return usarCondiciones(op, function(plazo){
       var l = liquidar(op, io, plazo);
       return {
         nitPagador: soloDigitos(op.nit),
@@ -1046,9 +1126,19 @@ function construir_payload(){
           anticipoConRetenciones: l.anticipoNetoLiq,
           saldoBrutoRemanente: l.saldoBrutoRemanente,
           valorVencimiento: l.valorVencimiento
-        }
+        },
+        condiciones: condicionesActuales(plazo)
       };
-    })
+    });
+  });
+  return {
+    nitEmisor: soloDigitos(val("c_nit")),
+    nombreEmisor: val("c_razon_emisor"),
+    comercial: val("c_comercial").trim(),
+    esPrimeraOperacion: marcado("c_primera"),
+    tipoOperacion: val("c_tipo"),
+    condiciones: ops[0].condiciones,
+    operaciones: ops
   };
 }
 
@@ -1071,8 +1161,8 @@ function fechaCorta(d){ return String(d.getDate()).padStart(2,"0") + "/" + Strin
 function nombreArchivo(s){ return String(s || "").replace(/[\\/:*?"<>|]+/g, " ").replace(/\s+/g, " ").trim(); }
 
 // Datos de cada página de la cotización (una por operación / pagador).
-function datosCotizacion(plazo){
-  return operaciones.map(function(op, io){
+function datosCotizacion(plazoDado){
+  return operaciones.map(function(op, io){ return usarCondiciones(op, function(plazo){
     var l = liquidar(op, io, plazo);
     var filas = [
       ["ANTICIPO BRUTO", pesos(l.valorAnticipo), true],
@@ -1101,7 +1191,7 @@ function datosCotizacion(plazo){
       tasaMV: pct(l.nominalMensual), tasaEA: pct(l.tasaClienteEA),
       detalle: filas
     };
-  });
+  }, plazoDado); });
 }
 
 // Generador de PDF propio (sin librerías externas: el Deployer no permite scripts de terceros).
@@ -1207,10 +1297,11 @@ function fechaMapeo(d){ return isoLocal(d).replace(/-/g, "."); }
 // Campos acordados con Operaciones (reunión 26-oct-2026): solo los que el panel ya tiene; el resto queda pendiente de confirmar.
 function mapeoFacturasCSV(plazo){
   var celda = function(v){ var t = String(v == null ? "" : v); return /[;"\n]/.test(t) ? '"' + t.replace(/"/g, '""') + '"' : t; };
-  var fechaPago = fechaMapeo((plazo || resolverPlazo()).pagoAjustado);
   var emisor = val("c_razon_emisor"), nitEmisor = soloDigitos(val("c_nit"));
   var filas = [["Emisor","NIT emisor","Pagador","NIT pagador","Folio","CUFE","Vencimiento","Fecha aproximada de pago","Valor"]];
-  operaciones.forEach(function(op){ op.facturas.forEach(function(f){
+  operaciones.forEach(function(op){
+    var fechaPago = usarCondiciones(op, function(p){ return fechaMapeo(p.pagoAjustado); }, plazo);
+    op.facturas.forEach(function(f){
     filas.push([emisor, nitEmisor, op.razon_social, soloDigitos(op.nit), f.folio, f.cufe, f.vencimiento, fechaPago, Math.round(Number(f.valor) || 0)]);
   }); });
   return "﻿" + filas.map(function(r){ return r.map(celda).join(";"); }).join("\r\n");
@@ -1234,7 +1325,10 @@ function crearCarpetaYCotizacion(plazo, negocios){
     mapeo: {
       nombre: nombreArchivo("Mapeo facturas " + cliente + " " + hoy) + ".csv", csv: mapeoFacturasCSV(plazo),
       nitEmisor: soloDigitos(val("c_nit")), fechaAproximadaPago: fechaMapeo(plazo.pagoAjustado),
-      facturas: [].concat.apply([], operaciones.map(function(op){ return op.facturas.map(function(f){ return { cufe: f.cufe || "", numeroFactura: f.folio || "", nitPagador: soloDigitos(op.nit) }; }); }))
+      facturas: [].concat.apply([], operaciones.map(function(op){
+        var fechaOp = usarCondiciones(op, function(p){ return fechaMapeo(p.pagoAjustado); }, plazo);
+        return op.facturas.map(function(f){ return { cufe: f.cufe || "", numeroFactura: f.folio || "", nitPagador: soloDigitos(op.nit), fechaAproximadaPago: fechaOp }; });
+      }))
     }
   };
   return fetch(CARPETA_WEBHOOK_URL, { method: "POST", headers: {"Content-Type":"application/json"}, body: JSON.stringify(cuerpo) })
@@ -1260,11 +1354,16 @@ function crearCarpetaYCotizacion(plazo, negocios){
 $("b_confirmar").addEventListener("click", function(){
   if(radicando){ return; }
   var caja = $("caja_aviso");
-  var bloqueos = pintar_validaciones(resolverPlazo());
+  var bloqueos = bloqueosTotales();
   caja.style.display = "block";
   if(bloqueos){
     caja.className = "pv_aviso pv_aviso_error";
     caja.textContent = "Hay " + bloqueos + " validaciones sin pasar. Corrígelas antes de radicar.";
+    return;
+  }
+  if(!todasGuardadas()){
+    caja.className = "pv_aviso pv_aviso_error";
+    caja.textContent = "Guarda todas las operaciones (botón Guardar operación) antes de crear la radicación.";
     return;
   }
 
@@ -1359,14 +1458,30 @@ $("c_fee").addEventListener("change", function(){
 });
 $("c_nit").addEventListener("keydown", function(ev){ if(ev.key === "Enter"){ consultarEmisor(this.value); } });
 $("b_consultar_emisor").addEventListener("click", function(){ consultarEmisor(val("c_nit")); });
-$("c_operacion_vista").addEventListener("change", function(){
-  operacion_vista = parseInt(this.value,10);
-  pintar_liquidacion(resolverPlazo());
+$("c_operacion_vista").addEventListener("change", function(){ activarOperacion(parseInt(this.value,10)); });
+// Guardar: deja fijas las condiciones del pagador activo; con eso se habilita agregar otro pagador o crear.
+$("b_guardar_op").addEventListener("click", function(){
+  var op = operaciones[operacion_vista];
+  var caja = $("caja_aviso");
+  if(!op){ return; }
+  var nombre = nombreOperacion(op, operacion_vista);
+  var b = bloqueosOperacion(operacion_vista);
+  caja.style.display = "block";
+  if(b){
+    caja.className = "pv_aviso pv_aviso_error";
+    caja.textContent = "No se pudo guardar " + nombre + ": hay " + b + (b === 1 ? " validación en rojo." : " validaciones en rojo.");
+    return;
+  }
+  op.cond = leerCondiciones();
+  op.guardado = firmaOperacion(op, op.cond);
+  caja.className = "pv_aviso pv_aviso_ok";
+  caja.textContent = nombre + " guardada. Puedes agregar otro pagador o crear la radicación.";
+  recalcular(true);
 });
 $("b_agregar_pagador").addEventListener("click", function(){
-  if(operaciones.length >= MAX_PAGADORES){ return; }
+  if(operaciones.length >= MAX_PAGADORES || !todasGuardadas()){ return; }
   operaciones.push(operacionVacia());
-  recalcular(true);
+  activarOperacion(operaciones.length - 1);
 });
 $("b_limpiar").addEventListener("click", function(){
   operaciones = [operacionVacia()];
