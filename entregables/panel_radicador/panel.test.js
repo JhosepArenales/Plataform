@@ -40,7 +40,7 @@ function cargarPanel() {
   const localStorage = { getItem() { return null; }, setItem() {} };
   const fetch = () => Promise.reject(new Error('sin red en pruebas'));
   const fn = new Function('document', 'localStorage', 'fetch',
-    script + '\n;return { setFeeManual: function(v){ feeManualPct = v; }, setOperaciones: function(o){ operaciones = o; }, datosCotizacion, construirCotizacionPDF, crearCarpetaYCotizacion, setFetch: function(f){ fetch = f; }, setEmisorRiesgo: function(e){ emisorRiesgo = e; }, pintar_validaciones, setFee30: function(v){ fee30Pct = v; }, feeEAAplicado, pintar_liquidacion, postBigQuery, setEsperaBQ: function(v){ ESPERA_BQ_MS = v; }, PdfSimple, mapeoFacturasCSV, esSi, CARPETA_WEBHOOK_URL, feeAplicado, feeEsManual, liquidar, feePeriodo, tasaMaximaFinalCliente, tasaMaximaInversionista, PARAMS, ' +
+    script + '\n;return { setFeeManual: function(v){ feeManualPct = v; }, setOperaciones: function(o){ operaciones = o; }, datosCotizacion, construirCotizacionPDF, crearCarpetaYCotizacion, setFetch: function(f){ fetch = f; }, setEmisorRiesgo: function(e){ emisorRiesgo = e; }, pintar_validaciones, setFee30: function(v){ fee30Pct = v; }, feeEAAplicado, pintar_liquidacion, postBigQuery, listarPagadores, getPagadores: function(){ return pagadoresDisponibles; }, setToken: function(v){ consultaEmisorToken = v; }, setEsperaBQ: function(v){ ESPERA_BQ_MS = v; }, PdfSimple, mapeoFacturasCSV, esSi, CARPETA_WEBHOOK_URL, feeAplicado, feeEsManual, liquidar, feePeriodo, tasaMaximaFinalCliente, tasaMaximaInversionista, PARAMS, ' +
     'CUPO_WEBHOOK_URL, LISTAR_PAGADORES_WEBHOOK_URL, LISTAR_FACTURAS_WEBHOOK_URL, RADICAR_WEBHOOK_URL, MAX_PAGADORES };');
   return { api: fn(document, localStorage, fetch), els };
 }
@@ -410,8 +410,26 @@ test('consulta por partes: sin pendiente responde igual que antes y tiene tope d
   await assert.rejects(api.postBigQuery('https://x?a=1'), /no termin/);
 });
 
+test('pagadores viables sin facturas también aparecen (marcados con 0), después de los que tienen facturas', async () => {
+  const { api, els } = cargarPanel();
+  const resp = (d) => Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(d) });
+  api.setFetch((url) => url.includes('Listar_facturas')
+    ? resp({ encontrado: true, facturas: [{ nitPagador: '222', folio: 'F1', valor: 100 }] })
+    : resp({ encontrado: true, emisor: { razon_social: 'E' }, pagadores: [
+        { nit: '111', razon_social: 'SIN FACTURAS', viabilidad: 'VIABLE' },
+        { nit: '222', razon_social: 'CON FACTURAS', viabilidad: 'VIABLE' },
+        { nit: '333', razon_social: 'NO VIABLE', viabilidad: 'NO VIABLE' } ] }));
+  api.setToken(1);
+  api.listarPagadores('900', 1);
+  await new Promise((r) => setTimeout(r, 20));
+  assert.deepEqual(api.getPagadores().map((p) => p.nit), ['222', '111']);
+  assert.ok(els.nota_pagadores.textContent.includes('1 pagador(es) viables aún no tienen facturas'));
+  assert.ok(els.nota_pagadores.textContent.includes('no son viables'));
+  assert.ok(leerHtml().includes("' (0 – sin facturas en la base)'"));
+});
+
 test('index.html llegó idéntico al probado (huella SHA-256)', () => {
   const contenido = leerHtml().replace(/\r\n/g, '\n').replace(/\s+$/, '');
   const huella = require('node:crypto').createHash('sha256').update(contenido).digest('hex');
-  assert.equal(huella, '15ed2f29fda883e6bf86a5a5b3119eef8882f52e742d4729b70542e696981e9e');
+  assert.equal(huella, 'd8d167dc027c9967792c1c2841f7b74a5b9aeb71d6d39692a3e20d38e136628e');
 });

@@ -175,7 +175,7 @@ td input{padding:5px 7px;font-size:12.5px}
           <button class="pv_boton" id="b_agregar_pagador">Agregar pagador</button>
         </div>
         <div class="pv_cuerpo">
-          <p class="pv_ayuda" style="margin:0 0 12px">Cada pagador es una operación independiente, con su propia liquidación. Solo aparecen los pagadores viables que tienen facturas de este emisor (máximo 10); entre paréntesis, cuántas facturas tiene cada uno.</p>
+          <p class="pv_ayuda" style="margin:0 0 12px">Cada pagador es una operación independiente, con su propia liquidación. Aparecen todos los pagadores viables del emisor (máximo 10 operaciones por radicación); entre paréntesis, cuántas facturas tiene cada uno en la base. Primero salen los que tienen facturas.</p>
           <div id="lista_operaciones"></div>
           <div class="pv_nota aviso" id="nota_pagadores"></div>
         </div>
@@ -333,7 +333,7 @@ var operaciones = [operacionVacia()];
 var operacion_vista = 0;
 var radicando = false;
 var emisorRiesgo = null;          // { razon_social, cupoDisponible, estadoCupo, anticipoPactado, plazoPactado }
-var pagadoresDisponibles = [];    // viables y con facturas, máx. 10
+var pagadoresDisponibles = [];    // todos los viables; primero los que tienen facturas
 var facturasEmisor = [];          // { nitPagador, pagador, folio, vencimiento, valor, cufe }
 var consultaEmisorToken = 0;
 var feeManualPct = null;          // % Fee del período digitado por el comercial; null = automático (H20)
@@ -488,8 +488,8 @@ function facturasDelPagador(nitPagador){
     .sort(function(a,b){ return (a.vencimiento || "") < (b.vencimiento || "") ? -1 : 1; });
 }
 
-// Pagadores y facturas se piden en paralelo. Regla de la calculadora-mapeo: en la lista
-// solo quedan los pagadores viables que tengan al menos una factura de este emisor.
+// Pagadores y facturas se piden en paralelo. En la lista quedan todos los pagadores viables;
+// los que no tienen facturas de este emisor en la base salen al final, marcados con (0).
 function listarPagadores(nitEmisor, miToken){
   var nota = $("nota_pagadores");
   var q = "?nitEmisor=" + encodeURIComponent(nitEmisor);
@@ -516,8 +516,9 @@ function listarPagadores(nitEmisor, miToken){
 
       var todos = (dataPag && dataPag.encontrado && Array.isArray(dataPag.pagadores)) ? dataPag.pagadores : [];
       var viables = todos.filter(esViable);
+      // Se muestran todos los viables (6-nov-2026, a pedido de Comercial): primero los que tienen facturas en la base.
       var conFacturas = viables.filter(function(p){ return facturasDelPagador(p.nit).length > 0; });
-      pagadoresDisponibles = conFacturas.slice(0, MAX_PAGADORES);
+      pagadoresDisponibles = conFacturas.concat(viables.filter(function(p){ return facturasDelPagador(p.nit).length === 0; }));
 
       var mensajes = [];
       var noViables = todos.length - viables.length;
@@ -531,8 +532,7 @@ function listarPagadores(nitEmisor, miToken){
           Object.keys(conteo).map(function(k){ return k + ": " + conteo[k]; }).join(", ") + ").");
       }
       var sinFacturas = viables.length - conFacturas.length;
-      if(sinFacturas){ mensajes.push(sinFacturas + " pagador(es) viables no se muestran porque no tienen facturas de este emisor en la base."); }
-      if(conFacturas.length > MAX_PAGADORES){ mensajes.push("Hay " + conFacturas.length + " pagadores disponibles; se muestran los primeros " + MAX_PAGADORES + "."); }
+      if(sinFacturas){ mensajes.push(sinFacturas + " pagador(es) viables aún no tienen facturas de este emisor en la base: aparecen con (0) y no se pueden radicar hasta que se carguen."); }
       if(fallos.length){ mensajes.unshift("No se pudo traer: " + fallos.join(" y ") + ". Revisa ese flujo en n8n."); }
       nota.textContent = mensajes.join(" ");
       nota.className = "pv_nota " + (fallos.length ? "error" : "aviso") + (mensajes.length ? " ver" : "");
@@ -710,7 +710,7 @@ function pintar_operaciones(){
       pagadoresDisponibles.map(function(p){
         var usado = usadosEnOtras.indexOf(p.nit) >= 0;
         return '<option value="' + escapeHtml(p.nit) + '"' + (p.nit === operacion.nit ? " selected" : "") + (usado ? " disabled" : "") + '>' +
-          escapeHtml(p.razon_social) + ' (' + facturasDelPagador(p.nit).length + ')' + (Number(p.diasMora) > 0 ? " — EN MORA " + p.diasMora + " días" : "") + (usado ? " — ya está en otra operación" : "") + '</option>';
+          escapeHtml(p.razon_social) + (facturasDelPagador(p.nit).length ? ' (' + facturasDelPagador(p.nit).length + ')' : ' (0 – sin facturas en la base)') + (Number(p.diasMora) > 0 ? " — EN MORA " + p.diasMora + " días" : "") + (usado ? " — ya está en otra operación" : "") + '</option>';
       }).join("");
 
     var bloqueFacturas = "";
@@ -954,6 +954,8 @@ function recalcular(repintar){
   }
 
   if(repintar){ pintar_operaciones(); }
+  $("b_agregar_pagador").disabled = operaciones.length >= MAX_PAGADORES;
+  $("b_agregar_pagador").title = operaciones.length >= MAX_PAGADORES ? "Máximo " + MAX_PAGADORES + " operaciones por radicación." : "";
   var bloqueos = pintar_validaciones(plazo);
   pintar_liquidacion(plazo);
 
@@ -1362,6 +1364,7 @@ $("c_operacion_vista").addEventListener("change", function(){
   pintar_liquidacion(resolverPlazo());
 });
 $("b_agregar_pagador").addEventListener("click", function(){
+  if(operaciones.length >= MAX_PAGADORES){ return; }
   operaciones.push(operacionVacia());
   recalcular(true);
 });
