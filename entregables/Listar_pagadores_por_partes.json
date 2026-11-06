@@ -1,0 +1,268 @@
+{
+  "name": "PRUEBA - Listar pagadores por NIT emisor (BigQuery) por partes",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "Listar_pagadores",
+        "responseMode": "responseNode",
+        "options": {
+          "allowedOrigins": "*"
+        }
+      },
+      "id": "74333971-2445-4fff-9f13-034994dd117e",
+      "name": "Webhook: listar pagadores",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        720,
+        496
+      ],
+      "webhookId": "Listar_pagadores"
+    },
+    {
+      "parameters": {
+        "jsCode": "const nitEmisor = String($input.first().json.query.nitEmisor || '').replace(/\\D/g, '');\nif (!nitEmisor) {\n  throw new Error('Falta el parámetro nitEmisor en la consulta.');\n}\nreturn [{ json: { nitEmisor } }];"
+      },
+      "id": "2f6d959d-4a6b-483d-95c2-c9cd03350dd3",
+      "name": "Normalizar NIT emisor",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        896,
+        496
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Consulta por partes: si el panel vuelve a preguntar trae jobId/location (solo letras, números, - y _).\nconst _qp = $('Webhook: listar pagadores').first().json.query || {};\nconst _jobId = String(_qp.jobId || '').replace(/[^A-Za-z0-9_-]/g, '');\nconst _location = String(_qp.location || '').replace(/[^A-Za-z0-9-]/g, '') || 'us-east1';\nconst nitEmisor = $input.first().json.nitEmisor;\n\nconst columnas = [\n  'nit_cliente', 'razon_social', 'disponible_total', 'estado_cupo_cliente',\n  'anticipo', 'plazo', 'dias_mora', 'dias_mora_cliente',\n  'aplica_rete_fuente', 'aplica_rete_ica', 'aplica_rete_iva',\n  'nit_contraparte', 'razon_social_contraparte', 'viabilidad_contraparte',\n  'disponible_contraparte', 'estado_cupo_contraparte', 'dias_mora_contraparte',\n  'mecanismo_negociacion_contraparte', 'confirmacion_correo_pre_operacion', 'operatividad_pago_directo'\n].join(', ');\n\nconst tabla = '`inlaid-stack-375114.analytics_data_products.mapping_rules`';\n\nconst bqQuery = 'SELECT ' + columnas + ' FROM ' + tabla +\n  \" WHERE nit_cliente = '\" + nitEmisor + \"'\";\n\nreturn [{ json: { jobId: _jobId, location: _location, nitEmisor, bqQuery } }];\n"
+      },
+      "id": "ae537b66-bb72-4072-8000-c5475a2f44ac",
+      "name": "Construir SQL",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1088,
+        496
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://bigquery.googleapis.com/bigquery/v2/projects/inlaid-stack-375114/queries",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleApi",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { query: $json.bqQuery, useLegacySql: false, timeoutMs: 20000 } }}",
+        "options": {}
+      },
+      "id": "4779133e-23bb-4a1a-aeab-3a17401ed251",
+      "name": "BigQuery: listar contrapartes",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1264,
+        656
+      ],
+      "credentials": {
+        "googleApi": {
+          "id": "zDQ7OLqtmEiki20W",
+          "name": "Bigquery"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Consulta por partes: BigQuery aún no termina -> el panel vuelve a preguntar con este jobId.\nconst _r = $input.first().json || {};\nif (_r.jobComplete === false && _r.jobReference && _r.jobReference.jobId) {\n  return [{ json: { pendiente: true, jobId: _r.jobReference.jobId, location: _r.jobReference.location || 'us-east1' } }];\n}\nconst resp = $input.first().json;\nconst fields = (resp.schema && resp.schema.fields) || [];\nconst rawRows = resp.rows || [];\n\nconst rows = rawRows.map(row => {\n  const obj = {};\n  row.f.forEach((cell, i) => { obj[fields[i].name] = cell.v; });\n  return obj;\n});\n\nif (!rows.length) {\n  return [{ json: { encontrado: false, emisor: null, pagadores: [] } }];\n}\n\n// 'plazo'/'plazo_2' llegan como texto tipo \"90 días\": se extrae el número.\nfunction parsePlazo(v){\n  if (v == null) return 0;\n  const m = String(v).match(/\\d+/);\n  return m ? Number(m[0]) : 0;\n}\n// 'anticipo'/'anticipo_2' pueden llegar como fracción (0.95) o como porcentaje (95).\n// Si es <= 1, se asume fracción y se multiplica por 100.\nfunction parseAnticipo(v){\n  const n = Number(v);\n  if (!n) return 0;\n  return n <= 1 ? n * 100 : n;\n}\n\n// Campos según la calculadora-mapeo de Álvaro. null = sin dato en el mapeo (esa regla no se valida).\nfunction numOrNull(v){ return (v === null || v === undefined || v === '') ? null : Number(v); }\n\n// Días de mora del cliente: la tabla trae dias_mora y dias_mora_cliente; se toma el mayor.\nfunction moraCliente(r){\n  const vals = [r.dias_mora, r.dias_mora_cliente].map(v => (v === null || v === undefined || v === '') ? null : Number(v)).filter(v => v !== null && isFinite(v));\n  return vals.length ? Math.max(...vals) : null;\n}\n// Retenciones del cliente (base de Catalina): SI/NO, true/false o 1/0. null = sin dato (el comercial la marca a mano).\nfunction aplica(v){\n  if (v === null || v === undefined || v === '') return null;\n  const s = String(v).trim().normalize('NFD').replace(/[\\u0300-\\u036f]/g, '').toLowerCase();\n  if (['si', 's', 'true', '1', 'aplica', 'yes', 'x'].includes(s)) return true;\n  if (['no', 'n', 'false', '0', 'no aplica'].includes(s)) return false;\n  return null;\n}\n\nconst emisor = {\n  nit: rows[0].nit_cliente,\n  razon_social: rows[0].razon_social || '',\n  cupoDisponible: numOrNull(rows[0].disponible_total),\n  estadoCupo: rows[0].estado_cupo_cliente || null,\n  anticipoPactado: rows[0].anticipo == null ? null : parseAnticipo(rows[0].anticipo),\n  plazoPactado: rows[0].plazo == null ? null : parsePlazo(rows[0].plazo),\n  diasMora: moraCliente(rows[0]),\n  retenciones: {\n    reteFuente: aplica(rows[0].aplica_rete_fuente),\n    reteIca: aplica(rows[0].aplica_rete_ica),\n    reteIva: aplica(rows[0].aplica_rete_iva)\n  }\n};\n\nconst pagadores = rows\n  .filter(r => r.nit_contraparte)\n  .map(r => ({\n    nit: r.nit_contraparte,\n    razon_social: r.razon_social_contraparte || '',\n    viabilidad: r.viabilidad_contraparte || '',\n    cupoDisponible: numOrNull(r.disponible_contraparte),\n    estadoCupo: r.estado_cupo_contraparte || null,\n    diasMora: Number(r.dias_mora_contraparte) || 0,\n    // Reglas de la contraparte que se llevan a HubSpot (texto tal cual viene del mapeo, sin espacios sobrantes).\n    mecanismoNegociacion: r.mecanismo_negociacion_contraparte ? String(r.mecanismo_negociacion_contraparte).trim() : null,\n    confirmacionCorreo: r.confirmacion_correo_pre_operacion ? String(r.confirmacion_correo_pre_operacion).trim() : null,\n    pagoDirecto: r.operatividad_pago_directo ? String(r.operatividad_pago_directo).trim() : null\n  }));\n\nreturn [{ json: { encontrado: true, emisor, pagadores } }];"
+      },
+      "id": "0bc71877-c60e-4e48-9386-4f76da4caf73",
+      "name": "Formatear respuesta",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1440,
+        496
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json }}",
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Access-Control-Allow-Origin",
+                "value": "*"
+              }
+            ]
+          }
+        }
+      },
+      "id": "70668c6a-e70e-4e90-9a46-bb987879cc59",
+      "name": "Responder al panel",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        1680,
+        496
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "3e141c01-76d6-4c9d-a252-dfbf55a4ae58",
+              "leftValue": "={{ $json.jobId }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "id": "132288ec-4c08-4190-8a0a-5f965258954b",
+      "name": "¿Ya hay consulta en curso?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1144,
+        496
+      ]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "=https://bigquery.googleapis.com/bigquery/v2/projects/inlaid-stack-375114/queries/{{ $json.jobId }}?location={{ $json.location }}&timeoutMs=20000",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleApi",
+        "options": {}
+      },
+      "id": "755c8b2e-3ea0-4faf-8539-9ad4cfa96be7",
+      "name": "BigQuery: leer resultado",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1264,
+        336
+      ],
+      "credentials": {
+        "googleApi": {
+          "id": "zDQ7OLqtmEiki20W",
+          "name": "Bigquery"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Webhook: listar pagadores": {
+      "main": [
+        [
+          {
+            "node": "Normalizar NIT emisor",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalizar NIT emisor": {
+      "main": [
+        [
+          {
+            "node": "Construir SQL",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Construir SQL": {
+      "main": [
+        [
+          {
+            "node": "¿Ya hay consulta en curso?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "BigQuery: listar contrapartes": {
+      "main": [
+        [
+          {
+            "node": "Formatear respuesta",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Formatear respuesta": {
+      "main": [
+        [
+          {
+            "node": "Responder al panel",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "¿Ya hay consulta en curso?": {
+      "main": [
+        [
+          {
+            "node": "BigQuery: leer resultado",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "BigQuery: listar contrapartes",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "BigQuery: leer resultado": {
+      "main": [
+        [
+          {
+            "node": "Formatear respuesta",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "2c6396290a72a2bc4ba2d433cf00f859a288b7f724952096b46a36c7b1aa7501"
+  },
+  "nodeGroups": [],
+  "tags": []
+}
