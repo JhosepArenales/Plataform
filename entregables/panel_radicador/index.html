@@ -1,0 +1,1387 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Plataform · Radicación comercial</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@500;600&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root{
+  --marca:#4A2A7A; --marca_oscura:#38205D; --marca_media:#6C43AD; --marca_clara:#F0EAF9;
+  --acento:#1E6FD9; --acento_claro:#E8F1FC;
+  --lienzo:#F5F5F8; --superficie:#FFFFFF;
+  --tinta:#1B1A24; --tinta_media:#5A5769; --tinta_suave:#8E8B9C;
+  --borde:#E4E2EC; --borde_fuerte:#C9C5D6;
+  --alerta:#B02A20; --alerta_clara:#FBECEA;
+  --aviso:#8A6108; --aviso_clara:#FBF3E2;
+  --exito:#1B7A4B; --exito_clara:#E8F5EE;
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{background:var(--lienzo);color:var(--tinta);font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;font-size:13px;line-height:1.5;-webkit-font-smoothing:antialiased}
+
+.pv_encabezado{background:var(--marca);color:#fff;padding:0 24px;height:56px;display:flex;align-items:center;gap:18px}
+.pv_marca{font-family:'Poppins',sans-serif;font-weight:600;font-size:21px;letter-spacing:-.02em}
+.pv_marca span{color:#B79BE8}
+.pv_division{width:1px;height:22px;background:rgba(255,255,255,.28)}
+.pv_seccion{font-size:13px;color:rgba(255,255,255,.82)}
+
+.pv_marco{max-width:1500px;margin:0 auto;padding:20px 24px 40px}
+h1{font-family:'Poppins',sans-serif;font-size:20px;font-weight:600;letter-spacing:-.015em;margin:0}
+.pv_sub{margin:3px 0 16px;font-size:12.5px;color:var(--tinta_media)}
+.pv_columnas{display:grid;grid-template-columns:minmax(0,1.55fr) minmax(330px,1fr);gap:16px;align-items:start}
+@media (max-width:1100px){.pv_columnas{grid-template-columns:1fr}}
+
+.pv_bloque{background:var(--superficie);border:1px solid var(--borde);border-radius:8px;margin-bottom:14px;overflow:hidden}
+.pv_bloque_cabeza{padding:11px 16px;border-bottom:1px solid var(--borde);display:flex;align-items:center;justify-content:space-between;gap:10px}
+.pv_bloque_cabeza h2{font-family:'Poppins',sans-serif;font-size:14px;font-weight:600;margin:0}
+.pv_paso{display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;border-radius:50%;background:var(--marca);color:#fff;font-size:11px;font-weight:600;margin-right:9px}
+.pv_cuerpo{padding:14px 16px}
+.pv_rejilla{display:grid;grid-template-columns:repeat(auto-fit,minmax(178px,1fr));gap:12px}
+label{display:block;font-size:11.5px;color:var(--tinta_media);margin-bottom:4px}
+input,select{width:100%;font:inherit;font-size:13px;color:var(--tinta);background:var(--superficie);border:1px solid var(--borde_fuerte);border-radius:6px;padding:7px 9px}
+input:focus-visible,select:focus-visible,button:focus-visible{outline:2px solid var(--acento);outline-offset:1px}
+input[readonly]{background:#F7F6FA;color:var(--tinta_media);border-style:dashed}
+input[readonly].pv_alerta{color:var(--alerta);border-color:var(--alerta)}
+.pv_ayuda{font-size:11px;color:var(--tinta_suave);margin-top:4px}
+.pv_check{display:flex;align-items:center;gap:7px;font-size:12.5px;color:var(--tinta);margin:0}
+.pv_check input{width:auto;margin:0}
+.pv_ret{display:flex;align-items:center;gap:8px}
+.pv_ret input[type=number]{width:80px}
+.pv_boton{font:inherit;font-size:12.5px;background:var(--superficie);color:var(--tinta);border:1px solid var(--borde_fuerte);border-radius:6px;padding:7px 13px;cursor:pointer}
+.pv_boton:hover{background:var(--marca_clara)}
+.pv_boton:disabled{opacity:.55;cursor:not-allowed}
+.pv_boton_principal{background:var(--marca);border-color:var(--marca);color:#fff;font-weight:500}
+.pv_boton_principal:hover{background:var(--marca_oscura)}
+.pv_boton_principal:disabled{background:var(--marca_media);border-color:var(--marca_media)}
+.pv_boton_texto{border:0;background:transparent;color:var(--acento);font:inherit;font-size:12.5px;cursor:pointer;padding:0;text-decoration:underline;text-underline-offset:2px}
+.pv_quitar{border:0;background:transparent;color:var(--tinta_suave);font-size:15px;cursor:pointer;line-height:1}
+.pv_nota{font-size:12px;border-radius:6px;padding:8px 10px;margin-top:10px;display:none}
+.pv_nota.ver{display:block}
+.pv_nota.aviso{background:var(--aviso_clara);color:var(--aviso)}
+.pv_nota.error{background:var(--alerta_clara);color:var(--alerta)}
+
+/* Operaciones */
+.pv_operacion{border:1px solid var(--borde);border-radius:8px;margin-bottom:12px;overflow:hidden}
+.pv_operacion_cabeza{background:var(--marca_clara);padding:10px 13px;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.pv_operacion_titulo{font-weight:600;font-size:13px;color:var(--marca_oscura)}
+.pv_operacion_cuerpo{padding:12px 13px}
+table{width:100%;border-collapse:separate;border-spacing:0;font-size:12.5px}
+th{text-align:left;font-size:11px;font-weight:500;color:var(--tinta_media);padding:5px 8px;border-bottom:1px solid var(--borde)}
+td{padding:4px 8px;border-bottom:1px solid var(--borde)}
+td input{padding:5px 7px;font-size:12.5px}
+.pv_der{text-align:right}
+.pv_mono{font-family:'IBM Plex Mono',monospace}
+.pv_cufe{max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px;color:var(--tinta_media)}
+.pv_sin_cufe{color:var(--alerta);font-style:italic}
+.pv_cupo_estado{font-size:11px;margin-top:4px;min-height:14px}
+.pv_cupo_estado.cargando{color:var(--tinta_suave)}
+.pv_cupo_estado.ok{color:var(--exito)}
+.pv_cupo_estado.error{color:var(--alerta)}
+
+/* Liquidación */
+.pv_panel_lateral{position:sticky;top:14px}
+.pv_heroe{background:var(--marca);color:#fff;border-radius:8px;padding:14px 16px;margin-bottom:10px}
+.pv_heroe_eti{font-size:11px;opacity:.8;letter-spacing:.04em;text-transform:uppercase;font-weight:600}
+.pv_heroe_tasa{font-family:'Poppins',sans-serif;font-size:30px;font-weight:600;line-height:1.1;margin-top:4px}
+.pv_heroe_sub{font-size:12px;opacity:.85}
+.pv_heroe_costo{font-family:'IBM Plex Mono',monospace;font-size:18px;margin-top:4px}
+.pv_liq{display:flex;justify-content:space-between;gap:12px;padding:6px 0;border-bottom:1px solid var(--borde);font-size:12.5px}
+.pv_liq span:first-child{color:var(--tinta_media)}
+.pv_liq span:last-child{font-variant-numeric:tabular-nums;font-weight:500}
+.pv_liq_fuerte{background:var(--marca_clara);margin:6px -16px 0;padding:9px 16px;border:0;font-size:13.5px}
+.pv_liq_fuerte span:first-child{color:var(--marca_oscura);font-weight:600}
+.pv_liq_fuerte span:last-child{font-weight:600;color:var(--marca_oscura)}
+.pv_titulo_grupo{font-size:11px;font-weight:600;color:var(--tinta_suave);letter-spacing:.04em;margin:14px 0 4px}
+
+/* Validaciones */
+.pv_val{display:flex;align-items:flex-start;gap:8px;padding:8px 10px;border-radius:6px;font-size:12px;margin-bottom:7px}
+.pv_val_ok{background:var(--exito_clara);color:var(--exito)}
+.pv_val_mal{background:var(--alerta_clara);color:var(--alerta)}
+.pv_val_avi{background:var(--aviso_clara);color:var(--aviso)}
+.pv_val_na{background:#F3F2F7;color:var(--tinta_media)}
+.pv_punto{width:7px;height:7px;border-radius:50%;background:currentColor;margin-top:6px;flex:0 0 auto}
+.pv_chip{display:inline-block;font-size:11px;padding:1px 7px;border-radius:4px;background:var(--marca_clara);color:var(--marca_oscura)}
+.pv_chip_mal{background:var(--alerta_clara);color:var(--alerta)}
+.pv_chip_ok{background:var(--exito_clara);color:var(--exito)}
+.pv_pendiente{display:inline-block;font-size:10px;font-weight:600;letter-spacing:.02em;border-radius:4px;padding:1px 6px;margin-left:6px;background:var(--aviso_clara);color:var(--aviso);vertical-align:middle}
+
+.pv_pie{background:var(--superficie);border:1px solid var(--borde);border-radius:8px;padding:13px 16px;display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap}
+.pv_pie_titulo{font-size:14px;font-weight:600;margin:0}
+.pv_pie_sub{font-size:12px;color:var(--tinta_media);margin:2px 0 0}
+.pv_aviso{margin-top:11px;border-radius:6px;padding:12px 14px;font-size:12.5px;display:none}
+.pv_aviso_ok{background:var(--exito_clara);color:var(--exito);border:1px solid #CBE6D8}
+.pv_aviso_error{background:var(--alerta_clara);color:var(--alerta);border:1px solid #EFD3CF}
+</style>
+</head>
+<body>
+
+<header class="pv_encabezado">
+  <div class="pv_marca">Plataform<span>.</span></div>
+  <div class="pv_division"></div>
+  <div class="pv_seccion">Comercial · Radicación</div>
+</header>
+
+<div class="pv_marco">
+  <h1>Radicar negocio</h1>
+  <p class="pv_sub">Registra lo acordado con el cliente. Al confirmar se crea el negocio en HubSpot, la carpeta del cliente en PROCESAMIENTO COMERCIAL y se descarga el PDF de la cotización.</p>
+
+  <div class="pv_columnas">
+    <div>
+
+      <!-- 1. EMISOR -->
+      <div class="pv_bloque">
+        <div class="pv_bloque_cabeza"><h2><span class="pv_paso">1</span>Emisor</h2></div>
+        <div class="pv_cuerpo">
+          <div class="pv_rejilla">
+            <div><label for="c_nit">NIT del emisor</label>
+              <div style="display:flex;gap:6px">
+                <input type="text" id="c_nit" inputmode="numeric" placeholder="Solo números, sin DV" style="flex:1">
+                <button type="button" class="pv_boton" id="b_consultar_emisor" style="white-space:nowrap">Consultar</button>
+              </div>
+            </div>
+            <div><label for="c_razon_emisor">Razón social del emisor</label>
+              <input type="text" id="c_razon_emisor" readonly placeholder="Se completa al consultar el NIT">
+              <p class="pv_cupo_estado" id="c_razon_emisor_estado"></p>
+            </div>
+            <div><label for="c_estado_cliente">Estado del cupo del cliente</label>
+              <input type="text" id="c_estado_cliente" readonly placeholder="—"></div>
+            <div><label for="c_cupo_cliente">Cupo disponible del cliente</label>
+              <input type="text" id="c_cupo_cliente" readonly placeholder="—"></div>
+            <div><label for="c_mora_cliente">Días de mora</label>
+              <input type="text" id="c_mora_cliente" readonly placeholder="—">
+              <p class="pv_ayuda">Más de 0 días bloquea la radicación (regla suspendida temporalmente para pruebas).</p></div>
+          </div>
+          <div class="pv_rejilla" style="margin-top:12px">
+            <div><label for="c_comercial">Comercial que cotiza</label>
+              <input type="text" id="c_comercial" placeholder="Nombre y apellido, como en HubSpot">
+              <p class="pv_ayuda">Con este nombre se asigna el propietario del negocio en HubSpot y se sacan tus iniciales.</p></div>
+            <div><label for="c_anio">Año</label>
+              <select id="c_anio"><option value="2025">2025</option><option value="2026" selected>2026</option><option value="2027">2027</option></select></div>
+            <div><label for="c_tipo">Tipo de operación</label>
+              <select id="c_tipo"><option>Factoring</option><option>Confirming</option></select></div>
+            <div><label class="pv_check" style="margin-top:22px"><input type="checkbox" id="c_primera">Primera operación del cliente</label>
+              <p class="pv_ayuda">Aplica el costo fijo de Confecámaras solo en la primera vez.</p></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 2. PAGADORES Y FACTURAS -->
+      <div class="pv_bloque">
+        <div class="pv_bloque_cabeza">
+          <h2><span class="pv_paso">2</span>Pagadores y facturas</h2>
+          <button class="pv_boton" id="b_agregar_pagador">Agregar pagador</button>
+        </div>
+        <div class="pv_cuerpo">
+          <p class="pv_ayuda" style="margin:0 0 12px">Cada pagador es una operación independiente, con su propia liquidación. Solo aparecen los pagadores viables que tienen facturas de este emisor (máximo 10); entre paréntesis, cuántas facturas tiene cada uno.</p>
+          <div id="lista_operaciones"></div>
+          <div class="pv_nota aviso" id="nota_pagadores"></div>
+        </div>
+      </div>
+
+      <!-- 3. PLAZO -->
+      <div class="pv_bloque">
+        <div class="pv_bloque_cabeza"><h2><span class="pv_paso">3</span>Plazo de la operación</h2></div>
+        <div class="pv_cuerpo">
+          <p class="pv_ayuda" style="margin:0 0 10px">La fecha de pago se ajusta sola si cae en día no hábil en Colombia.</p>
+          <div class="pv_rejilla">
+            <div><label for="c_desembolso">Fecha de desembolso (aprox.)</label><input type="date" id="c_desembolso"></div>
+            <div><label for="c_modo_plazo">Plazo definido por</label>
+              <select id="c_modo_plazo"><option value="dias">Número de días</option><option value="fechas">Fecha de pago</option></select></div>
+            <div id="w_dias"><label for="c_dias">Plazo en días</label><input type="number" id="c_dias" value="60" min="0" step="1"></div>
+            <div id="w_fecha_pago" style="display:none"><label for="c_fecha_pago">Fecha propuesta de pago</label><input type="date" id="c_fecha_pago"></div>
+          </div>
+          <div class="pv_rejilla" style="margin-top:12px">
+            <div><label for="c_fecha_efectiva">Fecha efectiva de pago</label><input type="text" id="c_fecha_efectiva" readonly></div>
+            <div><label for="c_dias_usados">Días de la operación (desde hoy)</label><input type="text" id="c_dias_usados" readonly></div>
+            <div><label for="c_plazo_max">Plazo máximo aprobado</label><input type="text" id="c_plazo_max" readonly placeholder="—">
+              <p class="pv_ayuda">Tope aprobado por Riesgo. No editable.</p></div>
+          </div>
+          <div class="pv_nota aviso" id="nota_festivo"></div>
+        </div>
+      </div>
+
+      <!-- 4. TASAS -->
+      <div class="pv_bloque">
+        <div class="pv_bloque_cabeza"><h2><span class="pv_paso">4</span>Tasas de la operación</h2></div>
+        <div class="pv_cuerpo">
+          <div class="pv_rejilla">
+            <div><label for="c_anticipo">% Anticipo</label><input type="number" id="c_anticipo" value="90" min="0" max="100" step="1">
+              <p class="pv_ayuda">% del valor de las facturas que se gira hoy.</p></div>
+            <div><label for="c_anticipo_max">Anticipo máximo aprobado</label><input type="text" id="c_anticipo_max" readonly placeholder="—">
+              <p class="pv_ayuda">Tope aprobado por Riesgo. No editable.</p></div>
+            <div><label for="c_fondeo">Tipo de fondeo</label>
+              <select id="c_fondeo"><option value="crowd">Crowd</option><option value="propia">Posición propia</option><option value="estructurado">Fondeador estructurado</option></select></div>
+          </div>
+          <div class="pv_rejilla" style="margin-top:12px">
+            <div id="w_tasa_inv"><label for="c_tasa_inv">Tasa inversionista (E.A. %)</label><input type="number" id="c_tasa_inv" step="0.01" placeholder="Ej: 14">
+              <p class="pv_ayuda">Tasa a ofrecer en el mercado.</p></div>
+            <div><label for="c_fee">Fee Plataform (cada 30 días, %)</label><input type="number" id="c_fee" step="0.001" min="0" value="0.530">
+              <p class="pv_ayuda" id="c_fee_ayuda">Por defecto 0,530 % (calculadora comercial). Editable si se necesita subir o bajar; si lo cambias, se avisa en la nota de HubSpot.</p></div>
+            <div><label for="c_fee_ea">Fee Plataform (E.A.)</label><input type="text" id="c_fee_ea" readonly>
+              <p class="pv_ayuda">No editable: el fee expresado en efectivo anual.</p></div>
+            <div><label class="pv_check" style="margin-top:22px"><input type="checkbox" id="c_fng">Operación con garantía FNG</label>
+              <p class="pv_ayuda">Informativo: la calculadora comercial no suma FNG al costo.</p></div>
+          </div>
+          <div class="pv_rejilla" style="margin-top:12px">
+            <div><label for="c_tasa_max_inv">Tasa máxima inversionista (E.A. %)</label><input type="text" id="c_tasa_max_inv" readonly placeholder="—">
+              <p class="pv_ayuda">No editable: es la tasa inversionista que digita el comercial (calculadora de Paulo).</p></div>
+            <!-- Oculta de la vista (genera confusión); se sigue calculando y enviando a HubSpot. -->
+            <div id="w_tasa_max_cliente" style="display:none"><label for="c_tasa_max_cliente">Tasa máxima final al cliente (E.A. %)</label><input type="text" id="c_tasa_max_cliente" readonly placeholder="—">
+              <p class="pv_ayuda">No editable: (1 + tasa inversionista) × (1 + Fee Plataform E.A.) − 1, igual que la "Tasa Total" de la calculadora de Karen. Si ajustas el % Fee del período, se recalcula con ese fee. No debe superar la tasa de usura del mes.</p></div>
+            <div><label for="c_tasa_cliente_mv">Tasa cliente (M.V.) sobre el valor del anticipo</label><input type="text" id="c_tasa_cliente_mv" readonly placeholder="—">
+              <p class="pv_ayuda">De la operación que se ve en la Liquidación.</p></div>
+            <div><label for="c_tasa_cliente_ea">Tasa cliente (E.A.) sobre el valor del anticipo</label><input type="text" id="c_tasa_cliente_ea" readonly placeholder="—"></div>
+            <div><label for="c_fee_periodo">% Fee del período</label><input type="number" id="c_fee_periodo" step="0.001" min="0">
+              <p class="pv_ayuda"><span id="c_fee_auto_txt">Automático: "% FEE" (H20) de la calculadora comercial.</span> Editable según la matriz de fee; si lo cambias, se recalcula la tasa máxima y se avisa en la nota de HubSpot. <button type="button" class="pv_boton_texto" id="b_fee_auto" style="display:none">Volver al automático</button></p></div>
+          </div>
+          <div class="pv_nota aviso" id="nota_fondeo"></div>
+        </div>
+      </div>
+
+      <!-- 5. RETENCIONES -->
+      <div class="pv_bloque">
+        <div class="pv_bloque_cabeza"><h2><span class="pv_paso">5</span>Retenciones que aplican</h2></div>
+        <div class="pv_cuerpo">
+          <div class="pv_rejilla">
+            <div class="pv_ret"><label class="pv_check"><input type="checkbox" id="c_rf" checked>Retefuente</label><input type="number" id="c_tasa_rf" value="11" step="0.001"><span class="pv_ayuda" style="margin:0">% sobre comisión</span></div>
+            <div class="pv_ret"><label class="pv_check"><input type="checkbox" id="c_ri">Reteica</label><input type="number" id="c_tasa_ri" value="0.966" step="0.001"><span class="pv_ayuda" style="margin:0">% sobre comisión</span></div>
+            <div class="pv_ret"><label class="pv_check"><input type="checkbox" id="c_riva">Reteiva</label><input type="number" id="c_tasa_riva" value="15" step="0.001"><span class="pv_ayuda" style="margin:0">% sobre el IVA</span></div>
+          </div>
+          <p class="pv_ayuda" id="nota_retenciones" style="margin-top:10px">Al consultar el emisor se marcan solas según la base de retenciones (mapping_rules).</p>
+        </div>
+      </div>
+
+    </div>
+
+    <div class="pv_panel_lateral">
+      <div class="pv_bloque">
+        <div class="pv_bloque_cabeza"><h2>Validaciones</h2></div>
+        <div class="pv_cuerpo" id="caja_validaciones"></div>
+      </div>
+
+      <div class="pv_bloque">
+        <div class="pv_bloque_cabeza">
+          <h2>Liquidación</h2>
+          <select id="c_operacion_vista" style="width:auto;max-width:60%;font-size:12px;padding:4px 7px"></select>
+        </div>
+        <div class="pv_cuerpo" id="caja_liquidacion"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="pv_pie">
+    <div>
+      <p class="pv_pie_titulo" id="pie_titulo">Sin operaciones</p>
+      <p class="pv_pie_sub" id="pie_sub">Consulta el emisor y elige los pagadores.</p>
+    </div>
+    <div style="display:flex;gap:8px">
+      <button class="pv_boton" id="b_limpiar">Limpiar</button>
+      <button class="pv_boton pv_boton_principal" id="b_confirmar">Crear radicación y carpeta</button>
+    </div>
+  </div>
+  <div class="pv_aviso" id="caja_aviso"></div>
+</div>
+
+<script>
+/* ==================================================================
+   Conexión a n8n
+   ================================================================== */
+var CUPO_WEBHOOK_URL             = "https://webhooks.n8n.plataform.com/webhook/Consulta_Big_query";
+var LISTAR_PAGADORES_WEBHOOK_URL = "https://webhooks.n8n.plataform.com/webhook/Listar_pagadores";
+var LISTAR_FACTURAS_WEBHOOK_URL  = "https://webhooks.n8n.plataform.com/webhook/Listar_facturas";
+var RADICAR_WEBHOOK_URL          = "https://webhooks.n8n.plataform.com/webhook/Radicar_negocio";
+var CARPETA_WEBHOOK_URL          = "https://webhooks.n8n.plataform.com/webhook/Crear_carpeta_radicacion";
+var MAX_PAGADORES = 10;
+// Consulta por partes: el balanceador de Google delante de n8n corta a los 30 s. Si BigQuery tarda más,
+// n8n responde {pendiente, jobId, location} y el panel vuelve a preguntar hasta tener el resultado.
+var ESPERA_BQ_MS = 1000;      // pausa entre preguntas (cada pregunta ya espera hasta 20 s en n8n)
+var MAX_PREGUNTAS_BQ = 12;    // ~4 minutos como máximo
+// Regla de Riesgo: cualquier día de mora bloquea la radicación.
+// SUSPENDIDA temporalmente para las pruebas de radicación (4-nov-2026): la mora se muestra como alerta y no bloquea.
+// Al terminar las pruebas, volver a poner true.
+var BLOQUEAR_POR_MORA = false;
+
+/* ==================================================================
+   Parámetros fijos de Plataform (copiados de la calculadora oficial).
+   No los edita el comercial.
+   ================================================================== */
+var PARAMS = {
+  // Calculadora comercial (hoja "Liquidación_final", v1.3).
+  iva: 0.19,
+  feeBase30: 0.0053,                                                  // L11: 0,530 % cada 30 días
+  feeEA: Math.round((Math.pow(1.0053, 365/30) - 1) * 100000) / 100000, // L17: 6,643 % E.A.
+  comisionMinima: 100000,                                             // "Valor mínimo de comisión $100.000"
+  pasarela: 2500,                                                     // D17: PA
+  confecamaras: 60000 * 1.19                                          // D19: solo primera operación, IVA incluido
+};
+// D18: PTG Abogados = REDONDEAR.MAS((((#facturas*2)+5)*109,35*((pago − desembolso + 60)/30,5)+21916,15)*0,3+10000; 0)
+function ptgAbogados(numFacturas, diasDesembolsoPago){
+  return Math.ceil((((numFacturas * 2) + 5) * 109.35 * ((diasDesembolsoPago + 60) / 30.5) + 21916.15) * 0.3 + 10000 - 1e-9);
+}
+
+/* ==================================================================
+   Estado
+   ================================================================== */
+function operacionVacia(){
+  // facturas = las seleccionadas de la base (opportunity_mapping) para este pagador.
+  return { nit:"", razon_social:"", cupoDisponible:null, estadoCupo:null, diasMora:null, confirmacionCorreo:null, mecanismoNegociacion:null, pagoDirecto:null, facturas:[] };
+}
+var operaciones = [operacionVacia()];
+var operacion_vista = 0;
+var radicando = false;
+var emisorRiesgo = null;          // { razon_social, cupoDisponible, estadoCupo, anticipoPactado, plazoPactado }
+var pagadoresDisponibles = [];    // viables y con facturas, máx. 10
+var facturasEmisor = [];          // { nitPagador, pagador, folio, vencimiento, valor, cufe }
+var consultaEmisorToken = 0;
+var feeManualPct = null;          // % Fee del período digitado por el comercial; null = automático (H20)
+var fee30Pct = null;              // Fee Plataform cada 30 días digitado (%); null = 0,530 % de la calculadora
+
+/* ==================================================================
+   Utilidades
+   ================================================================== */
+var moneda = new Intl.NumberFormat("es-CO",{maximumFractionDigits:0});
+function pesos(v){ return "$ " + moneda.format(Math.round(v||0)); }
+function pct(v){ return (v*100).toLocaleString("es-CO",{minimumFractionDigits:2,maximumFractionDigits:2}) + "%"; }
+function $(id){ return document.getElementById(id); }
+function val(id){ return $(id).value; }
+function num(id){ var n = parseFloat(val(id)); return isNaN(n) ? 0 : n; }
+function marcado(id){ return $(id).checked; }
+function escapeHtml(s){ return String(s==null?"":s).replace(/[&<>"']/g, function(c){ return {"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[c]; }); }
+function soloDigitos(v){ return String(v||"").replace(/\D/g,""); }
+function hayDato(v){ return v !== null && v !== undefined && v !== ""; }
+function estadoMalo(estado){ return typeof estado === "string" && /bloquead|mora|sobrecupo|vencid/i.test(estado); }
+function esViable(p){ return String(p.viabilidad||"").trim().toUpperCase() === "VIABLE"; }
+
+/* ==================================================================
+   Días hábiles de Colombia (misma lógica de la calculadora oficial)
+   ================================================================== */
+function parseISO(s){ if(!s){ return null; } var p = s.split("-").map(Number); return new Date(p[0], p[1]-1, p[2]); }
+function isoLocal(d){ return d.getFullYear() + "-" + String(d.getMonth()+1).padStart(2,"0") + "-" + String(d.getDate()).padStart(2,"0"); }
+function addDays(d, n){ var r = new Date(d); r.setDate(r.getDate()+n); return r; }
+function toNextMonday(d){ var r = new Date(d); while(r.getDay() !== 1){ r.setDate(r.getDate()+1); } return r; }
+function fmtFecha(d){ return d.toLocaleDateString("es-CO",{ day:"2-digit", month:"short", year:"numeric" }); }
+function easterSunday(year){
+  var a = year % 19, b = Math.floor(year/100), c = year % 100;
+  var d = Math.floor(b/4), e = b % 4, f = Math.floor((b+8)/25);
+  var g = Math.floor((b-f+1)/3), h = (19*a + b - d - g + 15) % 30;
+  var i = Math.floor(c/4), k = c % 4, l = (32 + 2*e + 2*i - h - k) % 7;
+  var m = Math.floor((a + 11*h + 22*l) / 451);
+  var month = Math.floor((h + l - 7*m + 114) / 31);
+  var day = ((h + l - 7*m + 114) % 31) + 1;
+  return new Date(year, month-1, day);
+}
+var holidaysCache = {};
+function festivosColombia(year){
+  if(holidaysCache[year]){ return holidaysCache[year]; }
+  var set = new Set();
+  [[0,1],[4,1],[6,20],[7,7],[11,8],[11,25]].forEach(function(md){ set.add(isoLocal(new Date(year,md[0],md[1]))); });
+  [[0,6],[2,19],[5,29],[7,15],[9,12],[10,1],[10,11]].forEach(function(md){
+    var dt = new Date(year,md[0],md[1]);
+    if(dt.getDay() !== 1){ dt = toNextMonday(dt); }
+    set.add(isoLocal(dt));
+  });
+  var easter = easterSunday(year);
+  set.add(isoLocal(addDays(easter,-3)));
+  set.add(isoLocal(addDays(easter,-2)));
+  set.add(isoLocal(toNextMonday(addDays(easter,39))));
+  set.add(isoLocal(toNextMonday(addDays(easter,60))));
+  set.add(isoLocal(toNextMonday(addDays(easter,68))));
+  holidaysCache[year] = set;
+  return set;
+}
+function esDiaHabilCO(date){
+  var dow = date.getDay();
+  if(dow === 0 || dow === 6){ return false; }
+  return !festivosColombia(date.getFullYear()).has(isoLocal(date));
+}
+function motivoNoHabil(date){ var dow = date.getDay(); return (dow === 0 || dow === 6) ? "fin de semana" : "festivo nacional"; }
+function siguienteDiaHabilCO(date){ var d = new Date(date); while(!esDiaHabilCO(d)){ d = addDays(d,1); } return d; }
+
+function resolverPlazo(){
+  var desembolso = parseISO(val("c_desembolso")) || new Date();
+  var pagoBruto = val("c_modo_plazo") === "fechas"
+    ? (parseISO(val("c_fecha_pago")) || desembolso)
+    : addDays(desembolso, num("c_dias"));
+  var fechaInvalida = pagoBruto <= desembolso;
+  var pagoAjustado = siguienteDiaHabilCO(pagoBruto);
+  var ajustado = isoLocal(pagoBruto) !== isoLocal(pagoAjustado);
+  // F35 de la calculadora: días = fecha de pago − fecha de cotización (hoy). PTG usa pago − desembolso.
+  var hoyCot = parseISO(isoLocal(new Date()));
+  var dias = Math.max(0, Math.round((pagoAjustado - hoyCot) / 86400000));
+  var diasPTG = Math.max(0, Math.round((pagoAjustado - desembolso) / 86400000));
+  return { desembolso:desembolso, pagoBruto:pagoBruto, pagoAjustado:pagoAjustado, dias:dias, diasPTG:diasPTG, fechaInvalida:fechaInvalida, ajustado:ajustado };
+}
+
+/* ==================================================================
+   Consulta del emisor y de sus pagadores (n8n → BigQuery)
+   ================================================================== */
+function consultarEmisor(nit){
+  var estado = $("c_razon_emisor_estado");
+  var boton = $("b_consultar_emisor");
+  var nitLimpio = soloDigitos(nit);
+  if(!nitLimpio){ estado.className = "pv_cupo_estado"; estado.textContent = ""; return; }
+
+  var miToken = ++consultaEmisorToken;
+  boton.disabled = true;
+  estado.className = "pv_cupo_estado cargando";
+  estado.textContent = "Consultando…";
+
+  postBigQuery(CUPO_WEBHOOK_URL + "?nit=" + encodeURIComponent(nitLimpio), function(){
+    if(miToken === consultaEmisorToken){ estado.textContent = "Consultando… BigQuery está tardando, puede tomar hasta 1 minuto."; }
+  })
+    .then(function(data){
+      if(miToken !== consultaEmisorToken){ return; }
+      if(!data || data.encontrado === false){
+        estado.className = "pv_cupo_estado error";
+        estado.textContent = "NIT no encontrado.";
+        emisorRiesgo = null;
+        pagadoresDisponibles = [];
+        facturasEmisor = [];
+        pintarEmisor();
+        recalcular(true);
+        return;
+      }
+      $("c_razon_emisor").value = data.razon_social || "";
+      estado.className = "pv_cupo_estado ok";
+      estado.textContent = "Encontrado en BigQuery.";
+      listarPagadores(nitLimpio, miToken);
+    })
+    .catch(function(err){
+      if(miToken !== consultaEmisorToken){ return; }
+      estado.className = "pv_cupo_estado error";
+      estado.textContent = "No se pudo consultar (" + (err && err.message ? err.message : "revisa el flujo de n8n") + ").";
+    })
+    .finally(function(){ if(miToken === consultaEmisorToken){ boton.disabled = false; } });
+}
+
+// Llama al webhook y, si BigQuery aún no termina, vuelve a preguntar con el jobId (ver MAX_PREGUNTAS_BQ).
+function postBigQuery(url, alEsperar){
+  var preguntas = 0;
+  var pedir = function(u){
+    return postJson(u).then(function(data){
+      if(!(data && data.pendiente && data.jobId)){ return data; }
+      if(++preguntas > MAX_PREGUNTAS_BQ){ throw new Error("BigQuery no terminó a tiempo, intenta de nuevo"); }
+      if(alEsperar){ alEsperar(preguntas); }
+      return new Promise(function(listo){ setTimeout(listo, ESPERA_BQ_MS); }).then(function(){
+        return pedir(url + (url.indexOf("?") >= 0 ? "&" : "?") + "jobId=" + encodeURIComponent(data.jobId) + "&location=" + encodeURIComponent(data.location || ""));
+      });
+    });
+  };
+  return pedir(url);
+}
+
+function postJson(url){
+  return fetch(url, { method: "POST" }).then(function(resp){
+    if(!resp.ok){ throw new Error("HTTP " + resp.status); }
+    return resp.json();
+  });
+}
+
+function facturasDelPagador(nitPagador){
+  var nit = soloDigitos(nitPagador);
+  if(!nit){ return []; }
+  return facturasEmisor
+    .filter(function(f){ return f.nitPagador === nit; })
+    .sort(function(a,b){ return (a.vencimiento || "") < (b.vencimiento || "") ? -1 : 1; });
+}
+
+// Pagadores y facturas se piden en paralelo. Regla de la calculadora-mapeo: en la lista
+// solo quedan los pagadores viables que tengan al menos una factura de este emisor.
+function listarPagadores(nitEmisor, miToken){
+  var nota = $("nota_pagadores");
+  var q = "?nitEmisor=" + encodeURIComponent(nitEmisor);
+  // Se esperan las dos consultas por separado: si una falla, lo que sí llegó se muestra igual
+  // y el aviso dice cuál falló (antes, un fallo en facturas dejaba vacío el cupo del cliente).
+  var avisarEspera = function(){
+    if(miToken !== consultaEmisorToken){ return; }
+    nota.textContent = "Trayendo pagadores y facturas… BigQuery está tardando, puede tomar hasta 1 minuto.";
+    nota.className = "pv_nota aviso ver";
+  };
+  var errorDe = function(nombre){ return function(err){ return { __error: nombre + " (" + (err && err.message ? err.message : "sin respuesta") + ")" }; }; };
+  Promise.all([
+    postBigQuery(LISTAR_PAGADORES_WEBHOOK_URL + q, avisarEspera).catch(errorDe("pagadores y cupo")),
+    postBigQuery(LISTAR_FACTURAS_WEBHOOK_URL + q, avisarEspera).catch(errorDe("facturas"))
+  ])
+    .then(function(respuestas){
+      if(miToken !== consultaEmisorToken){ return; }
+      var dataPag = respuestas[0], dataFac = respuestas[1];
+      var fallos = [dataPag, dataFac].filter(function(d){ return d && d.__error; }).map(function(d){ return d.__error; });
+      if(dataPag && dataPag.__error){ dataPag = null; }
+      if(dataFac && dataFac.__error){ dataFac = null; }
+      emisorRiesgo = (dataPag && dataPag.encontrado) ? dataPag.emisor : null;
+      facturasEmisor = (dataFac && Array.isArray(dataFac.facturas)) ? dataFac.facturas : [];
+
+      var todos = (dataPag && dataPag.encontrado && Array.isArray(dataPag.pagadores)) ? dataPag.pagadores : [];
+      var viables = todos.filter(esViable);
+      var conFacturas = viables.filter(function(p){ return facturasDelPagador(p.nit).length > 0; });
+      pagadoresDisponibles = conFacturas.slice(0, MAX_PAGADORES);
+
+      var mensajes = [];
+      var noViables = todos.length - viables.length;
+      if(noViables){
+        var conteo = {};
+        todos.filter(function(p){ return !esViable(p); }).forEach(function(p){
+          var k = p.viabilidad || "sin dato";
+          conteo[k] = (conteo[k] || 0) + 1;
+        });
+        mensajes.push(noViables + " pagador(es) no se muestran porque no son viables (" +
+          Object.keys(conteo).map(function(k){ return k + ": " + conteo[k]; }).join(", ") + ").");
+      }
+      var sinFacturas = viables.length - conFacturas.length;
+      if(sinFacturas){ mensajes.push(sinFacturas + " pagador(es) viables no se muestran porque no tienen facturas de este emisor en la base."); }
+      if(conFacturas.length > MAX_PAGADORES){ mensajes.push("Hay " + conFacturas.length + " pagadores disponibles; se muestran los primeros " + MAX_PAGADORES + "."); }
+      if(fallos.length){ mensajes.unshift("No se pudo traer: " + fallos.join(" y ") + ". Revisa ese flujo en n8n."); }
+      nota.textContent = mensajes.join(" ");
+      nota.className = "pv_nota " + (fallos.length ? "error" : "aviso") + (mensajes.length ? " ver" : "");
+
+      // Si una operación tenía un pagador que ya no está en la lista, se limpia.
+      operaciones.forEach(function(op){
+        if(op.nit && !pagadoresDisponibles.some(function(p){ return p.nit === op.nit; })){
+          op.nit = ""; op.razon_social = ""; op.cupoDisponible = null; op.estadoCupo = null; op.diasMora = null; op.confirmacionCorreo = null; op.mecanismoNegociacion = null; op.pagoDirecto = null; op.facturas = [];
+        }
+      });
+
+      pintarEmisor();
+      recalcular(true);
+    })
+    .catch(function(err){
+      if(miToken !== consultaEmisorToken){ return; }
+      emisorRiesgo = null;
+      pagadoresDisponibles = [];
+      facturasEmisor = [];
+      nota.textContent = "No se pudieron traer los pagadores o las facturas (" + (err && err.message ? err.message : "revisa los flujos de n8n") + ").";
+      nota.className = "pv_nota error ver";
+      pintarEmisor();
+      recalcular(true);
+    });
+}
+
+function pintarRo(id, valor){
+  var el = $(id);
+  el.value = hayDato(valor) ? valor : (emisorRiesgo ? "sin dato en el mapeo" : "");
+}
+
+// Retenciones del cliente desde mapping_rules (base de Catalina). Si hay dato, se marca y se bloquea la casilla;
+// si no hay dato, la casilla queda libre para que el comercial la marque.
+function aplicarRetencionesCliente(){
+  var r = (emisorRiesgo && emisorRiesgo.retenciones) || {};
+  var mapa = [["c_rf","reteFuente","Retefuente"],["c_ri","reteIca","Reteica"],["c_riva","reteIva","Reteiva"]];
+  var sinDato = [];
+  // Pruebas piloto (5-nov-2026): la base solo propone; el comercial puede cambiarlas y queda la alerta.
+  mapa.forEach(function(m){
+    var v = r[m[1]];
+    $(m[0]).disabled = false;
+    if(v === true || v === false){ $(m[0]).checked = v; }
+    else { sinDato.push(m[2]); }
+  });
+  $("nota_retenciones").textContent = !emisorRiesgo
+    ? "Al consultar el emisor se marcan solas según la base de retenciones (mapping_rules). Se pueden cambiar."
+    : (sinDato.length === 3 ? "Este cliente no tiene retenciones en la base: márcalas a mano."
+      : "Marcadas según la base de retenciones del cliente; se pueden cambiar si la operación lo requiere." + (sinDato.length ? " Sin dato en la base: " + sinDato.join(", ") + " (márcala a mano)." : ""));
+}
+
+function pintarEmisor(){
+  var e = emisorRiesgo;
+  aplicarRetencionesCliente();
+  pintarRo("c_estado_cliente", e ? e.estadoCupo : null);
+  $("c_estado_cliente").classList.toggle("pv_alerta", !!e && estadoMalo(e.estadoCupo));
+  pintarRo("c_cupo_cliente", e && hayDato(e.cupoDisponible) ? pesos(e.cupoDisponible) : null);
+  var mora = e && hayDato(e.diasMora) ? Number(e.diasMora) : null;
+  pintarRo("c_mora_cliente", mora === null ? null : mora + (mora === 1 ? " día" : " días") + (mora > 0 ? (BLOQUEAR_POR_MORA ? " · BLOQUEADO" : " · EN MORA (no bloquea en pruebas)") : ""));
+  $("c_mora_cliente").classList.toggle("pv_alerta", mora !== null && mora > 0);
+  pintarRo("c_anticipo_max", e && hayDato(e.anticipoPactado) ? e.anticipoPactado + "%" : null);
+  pintarRo("c_plazo_max", e && hayDato(e.plazoPactado) ? e.plazoPactado + " días" : null);
+}
+
+function seleccionarPagador(io, nitPagador){
+  var op = operaciones[io];
+  if(!op){ return; }
+  var p = pagadoresDisponibles.find(function(x){ return x.nit === nitPagador; });
+  op.nit = p ? p.nit : "";
+  op.razon_social = p ? p.razon_social : "";
+  op.cupoDisponible = p ? p.cupoDisponible : null;
+  op.estadoCupo = p ? p.estadoCupo : null;
+  op.diasMora = p ? p.diasMora : null;
+  op.confirmacionCorreo = p ? p.confirmacionCorreo : null;
+  op.mecanismoNegociacion = p ? p.mecanismoNegociacion : null;
+  op.pagoDirecto = p ? p.pagoDirecto : null;
+  op.facturas = [];
+  recalcular(true);
+}
+
+function claveFactura(f){ return (f.folio || "") + "|" + (f.cufe || ""); }
+
+/* ==================================================================
+   Tipo de fondeo (misma regla de la calculadora oficial)
+   ================================================================== */
+function aplicarTipoFondeo(){
+  var tipo = val("c_fondeo");
+  var nota = $("nota_fondeo");
+  $("w_tasa_inv").style.display = tipo === "propia" ? "none" : "";
+  nota.className = "pv_nota aviso";
+  nota.textContent = "";
+  if(tipo === "propia"){
+    nota.textContent = "En posición propia no hay inversionista externo: no se cobra financiación de inversionistas. Verifica que el pagador esté autorizado para posición propia.";
+    nota.className = "pv_nota aviso ver";
+  } else if(tipo === "estructurado"){
+    nota.textContent = "Digita la tasa pactada con el fondeador institucional de este pagador.";
+    nota.className = "pv_nota aviso ver";
+  }
+}
+
+/* ==================================================================
+   Cálculo por operación (réplica de la calculadora oficial)
+   ================================================================== */
+function liquidar(operacion, io, plazo){
+  // Réplica de la hoja "Liquidación_final" de la calculadora comercial (celdas entre paréntesis).
+  var dias = plazo.dias;                                                           // C9 = F35
+  var DIAS_ANIO = 365;
+  var valorFactura = operacion.facturas.reduce(function(a,f){ return a + (Number(f.valor)||0); },0);   // C7
+  var cantFacturas = operacion.facturas.filter(function(f){ return Number(f.valor) > 0; }).length;     // C11
+  var pctAnticipo = num("c_anticipo") / 100;                                      // C8
+  var valorAnticipo = valorFactura * pctAnticipo;                                 // C12
+  var tipoFondeo = val("c_fondeo");
+  var tasaInv = tipoFondeo === "propia" ? 0 : num("c_tasa_inv") / 100;            // C10
+  var aplicaFNG = marcado("c_fng");
+
+  var tasaFee = feeAplicado(dias);                                                // H20 = D13 (o el digitado)
+  var comisionFee = Math.max(tasaFee * valorAnticipo, PARAMS.comisionMinima);     // mínimo $100.000
+  var pasarela = PARAMS.pasarela;                                                 // D17
+  var ptg = cantFacturas > 0 ? ptgAbogados(cantFacturas, plazo.diasPTG != null ? plazo.diasPTG : dias) : 0; // D18
+  var confecamaras = (marcado("c_primera") && io === 0) ? PARAMS.confecamaras : 0; // D19 (una vez por radicación)
+  var ivaConfecamaras = confecamaras - confecamaras / 1.19;                       // E19
+  var valorComision = valorAnticipo > 0 ? comisionFee + pasarela + ptg : 0;       // D14
+  var ivaComision = valorComision * PARAMS.iva;                                   // D15
+
+  var retefuente = marcado("c_rf") ? valorComision * num("c_tasa_rf")/100 : 0;                    // D20
+  var reteica = marcado("c_ri") ? valorComision * num("c_tasa_ri")/100 : 0;                       // D21
+  var reteiva = marcado("c_riva") ? (ivaComision + ivaConfecamaras) * num("c_tasa_riva")/100 : 0; // D22
+  var totalRetenciones = retefuente + reteica + reteiva;
+
+  var gananciaInv = dias > 0 ? valorAnticipo * (Math.pow(1 + tasaInv, dias/DIAS_ANIO) - 1) : 0;  // G10
+  var costosOperacionales = valorComision + ivaComision + confecamaras - totalRetenciones;          // D23 = G13
+  var costoTotal = costosOperacionales + gananciaInv;                                              // G16
+  var anticipoNetoLiq = valorAnticipo - valorComision - ivaComision - confecamaras + totalRetenciones; // Liquidación_final!D24 (solo para G7)
+  // Lo que ve el cliente sale de la hoja "COTIZADOR v1_22_02_2024":
+  var costosCotizador = valorComision + ivaComision + confecamaras;                                // B21 = B22 + B23 + B24
+  var anticipoNeto = valorAnticipo - costosCotizador;                                             // B31 = B20 − B21 + B26 (B26 = 0)
+  var saldoBrutoRemanente = valorFactura - valorAnticipo;                                         // B32 = B8 − B10
+  var remanente = saldoBrutoRemanente - gananciaInv;                                              // B34 = B32 − B33 (= D25)
+  var valorVencimiento = valorAnticipo + gananciaInv;                                             // B36 = B20 + B33
+
+  // Tasa cliente sobre el anticipo: K7 (E.A.) y J7 (M.V.). Sin IVA.
+  var tasaClienteEA = (dias > 0 && valorAnticipo > 0) ? Math.pow(1 + (costoTotal - ivaComision) / valorAnticipo, DIAS_ANIO/dias) - 1 : 0;
+  var nominalMensual = Math.pow(1 + tasaClienteEA, 1/12) - 1;
+  // Tasa cliente sobre el valor de la factura: G7 (E.A.) y F7 (M.V.).
+  var tasaFacturaEA = (dias > 0 && valorFactura > 0) ? Math.pow(1 + (1 - (anticipoNetoLiq + remanente + ivaComision) / valorFactura), DIAS_ANIO/dias) - 1 : 0;
+  var tasaFacturaMV = Math.pow(1 + tasaFacturaEA, 1/12) - 1;
+
+  return {
+    dias:dias, valorFactura:valorFactura, cantFacturas:cantFacturas,
+    pctAnticipo:pctAnticipo, valorAnticipo:valorAnticipo,
+    tipoFondeo:tipoFondeo, tasaInv:tasaInv, tasaFee:tasaFee, aplicaFNG:aplicaFNG,
+    gananciaInv:gananciaInv, comisionFee:comisionFee, valorFNG:0,
+    pasarela:pasarela, ptg:ptg, confecamaras:confecamaras, costosFijos:pasarela + ptg + confecamaras,
+    valorComision:valorComision, ivaComision:ivaComision, costosOperacionales:costosOperacionales, costoTotal:costoTotal,
+    tasaClienteEA:tasaClienteEA, nominalMensual:nominalMensual, efectivoAnualEA:tasaClienteEA,
+    tasaFacturaEA:tasaFacturaEA, tasaFacturaMV:tasaFacturaMV,
+    retefuente:retefuente, reteica:reteica, reteiva:reteiva, totalRetenciones:totalRetenciones,
+    anticipoNeto:anticipoNeto, anticipoNetoLiq:anticipoNetoLiq, remanente:remanente, costosCotizador:costosCotizador,
+    saldoBrutoRemanente:saldoBrutoRemanente, valorVencimiento:valorVencimiento
+  };
+}
+
+/* ==================================================================
+   Pintado de operaciones
+   ================================================================== */
+function pintar_operaciones(){
+  var caja = $("lista_operaciones");
+  caja.innerHTML = operaciones.map(function(operacion, io){
+    var total = operacion.facturas.reduce(function(a,f){ return a + (Number(f.valor)||0); },0);
+    var hayCupo = hayDato(operacion.cupoDisponible);
+    var excede = hayCupo && total > operacion.cupoDisponible;
+
+    // Un pagador solo puede estar en una operación (así una factura no se radica dos veces).
+    var usadosEnOtras = operaciones.filter(function(o, j){ return j !== io && o.nit; }).map(function(o){ return o.nit; });
+    var opciones = '<option value="">' + (emisorRiesgo ? (pagadoresDisponibles.length ? "— elige el pagador —" : "Sin pagadores disponibles") : "Consulta primero el NIT del emisor") + '</option>' +
+      pagadoresDisponibles.map(function(p){
+        var usado = usadosEnOtras.indexOf(p.nit) >= 0;
+        return '<option value="' + escapeHtml(p.nit) + '"' + (p.nit === operacion.nit ? " selected" : "") + (usado ? " disabled" : "") + '>' +
+          escapeHtml(p.razon_social) + ' (' + facturasDelPagador(p.nit).length + ')' + (Number(p.diasMora) > 0 ? " — EN MORA " + p.diasMora + " días" : "") + (usado ? " — ya está en otra operación" : "") + '</option>';
+      }).join("");
+
+    var bloqueFacturas = "";
+    if(operacion.nit){
+      var lista = facturasDelPagador(operacion.nit);
+      var elegidas = operacion.facturas.map(claveFactura);
+      if(!lista.length){
+        bloqueFacturas = '<p class="pv_ayuda">Este pagador no tiene facturas cargadas en la base todavía.</p>';
+      } else {
+        var todas = lista.every(function(f){ return elegidas.indexOf(claveFactura(f)) >= 0; });
+        bloqueFacturas =
+          '<label class="pv_check" style="margin:10px 0 6px"><input type="checkbox" data-todas="' + io + '"' + (todas ? " checked" : "") + '>Seleccionar todas las facturas de este pagador</label>' +
+          '<table><thead><tr><th style="width:30px"></th><th>Folio</th><th>CUFE</th><th>Vence</th><th class="pv_der">Valor</th></tr></thead><tbody>' +
+          lista.map(function(f, k){
+            var sel = elegidas.indexOf(claveFactura(f)) >= 0;
+            return '<tr><td><input type="checkbox" style="width:auto" data-fac="' + io + '_' + k + '"' + (sel ? " checked" : "") + '></td>' +
+              '<td class="pv_mono">' + escapeHtml(f.folio) + '</td>' +
+              (f.cufe
+                ? '<td class="pv_mono pv_cufe" title="' + escapeHtml(f.cufe) + '">' + escapeHtml(f.cufe) + '</td>'
+                : '<td class="pv_cufe pv_sin_cufe">sin CUFE en la base</td>') +
+              '<td class="pv_mono">' + escapeHtml(f.vencimiento) + '</td>' +
+              '<td class="pv_der pv_mono">' + pesos(f.valor) + '</td></tr>';
+          }).join("") +
+          '</tbody></table>' +
+          '<p class="pv_ayuda" style="margin-top:8px">Seleccionadas: <b>' + operacion.facturas.length + '</b> · Valor total: <b>' + pesos(total) + '</b></p>';
+      }
+    }
+
+    return '<div class="pv_operacion">' +
+      '<div class="pv_operacion_cabeza">' +
+        '<span class="pv_operacion_titulo">' + escapeHtml(operacion.razon_social || ("Operación " + (io+1))) + '</span>' +
+        '<span class="pv_chip">' + operacion.facturas.length + ' facturas</span>' +
+        (hayCupo ? '<span class="pv_chip ' + (excede ? "pv_chip_mal" : "pv_chip_ok") + '">' + pesos(total) + ' de ' + pesos(operacion.cupoDisponible) + ' de cupo</span>' : '') +
+        '<button class="pv_quitar" style="margin-left:auto" data-quitar-op="' + io + '" aria-label="Quitar operación">×</button>' +
+      '</div>' +
+      '<div class="pv_operacion_cuerpo">' +
+        '<div class="pv_rejilla" style="margin-bottom:6px">' +
+          '<div><label>Pagador</label><select data-op="' + io + '" data-pagador-select="1">' + opciones + '</select></div>' +
+          '<div><label>NIT del pagador</label><input type="text" readonly class="pv_mono" value="' + escapeHtml(operacion.nit || "") + '"></div>' +
+          '<div><label>Cupo disponible del pagador</label><input type="text" readonly value="' + (operacion.nit ? (hayCupo ? pesos(operacion.cupoDisponible) : "sin dato en el mapeo") : "") + '"></div>' +
+          '<div><label>Estado del cupo del pagador</label><input type="text" readonly class="' + (estadoMalo(operacion.estadoCupo) ? "pv_alerta" : "") + '" value="' + escapeHtml(operacion.nit ? (operacion.estadoCupo || "sin dato en el mapeo") : "") + '"></div>' +
+        '</div>' +
+        bloqueFacturas +
+      '</div>' +
+    '</div>';
+  }).join("");
+
+  caja.querySelectorAll("[data-pagador-select]").forEach(function(select){
+    select.addEventListener("change", function(){ seleccionarPagador(parseInt(this.dataset.op,10), this.value); });
+  });
+  caja.querySelectorAll("[data-fac]").forEach(function(chk){
+    chk.addEventListener("change", function(){
+      var partes = this.dataset.fac.split("_");
+      var op = operaciones[parseInt(partes[0],10)];
+      var factura = facturasDelPagador(op.nit)[parseInt(partes[1],10)];
+      var clave = claveFactura(factura);
+      op.facturas = op.facturas.filter(function(f){ return claveFactura(f) !== clave; });
+      if(this.checked){ op.facturas.push(factura); }
+      recalcular(true);
+    });
+  });
+  caja.querySelectorAll("[data-todas]").forEach(function(chk){
+    chk.addEventListener("change", function(){
+      var op = operaciones[parseInt(this.dataset.todas,10)];
+      op.facturas = this.checked ? facturasDelPagador(op.nit).slice() : [];
+      recalcular(true);
+    });
+  });
+  caja.querySelectorAll("[data-quitar-op]").forEach(function(boton){
+    boton.addEventListener("click", function(){
+      operaciones.splice(parseInt(this.dataset.quitarOp,10),1);
+      if(!operaciones.length){ operaciones.push(operacionVacia()); }
+      operacion_vista = 0;
+      recalcular(true);
+    });
+  });
+}
+
+/* ==================================================================
+   Validaciones: las de la calculadora oficial + las condiciones de Riesgo
+   de la calculadora-mapeo. "mal" bloquea la radicación; "na" = sin dato
+   en el mapeo, no se valida; "avi" = se muestra, no bloquea.
+   ================================================================== */
+function pintar_validaciones(plazo){
+  var avisos = [];
+  var dias = plazo.dias;
+  var pctAnticipo = num("c_anticipo");
+  var tipoFondeo = val("c_fondeo");
+
+  if(!emisorRiesgo){ avisos.push(["mal","Consulta el NIT del emisor."]); }
+  if(!(pctAnticipo > 0 && pctAnticipo <= 100)){ avisos.push(["mal","El % de anticipo debe ser mayor a 0% y no puede superar 100%."]); }
+  if(plazo.fechaInvalida){ avisos.push(["mal","La fecha de pago debe ser posterior a la fecha de desembolso."]); }
+  if(dias < 30){ avisos.push(["mal","El plazo debe ser de al menos 30 días."]); }
+  if(tipoFondeo !== "propia" && !(num("c_tasa_inv") > 0)){ avisos.push(["mal","Falta la tasa del inversionista (E.A.)."]); }
+  if(fee30Pct !== null && !(fee30Pct > 0)){ avisos.push(["mal","El Fee Plataform (cada 30 días) debe ser mayor a 0%."]); }
+  else if(fee30EsManual()){ avisos.push(["avi","Fee Plataform ajustado: " + (feeBase30()*100).toLocaleString("es-CO",{minimumFractionDigits:3,maximumFractionDigits:3}) + "% cada 30 días (por defecto 0,530%). Se avisa en la nota de HubSpot."]); }
+  if(feeManualPct !== null && !(feeManualPct > 0)){ avisos.push(["mal","El % Fee del período debe ser mayor a 0%."]); }
+  else if(feeEsManual(dias)){
+    var fa = (feePeriodo(dias)*100).toLocaleString("es-CO",{minimumFractionDigits:3,maximumFractionDigits:3}) + "%";
+    var fm = (feeAplicado(dias)*100).toLocaleString("es-CO",{minimumFractionDigits:3,maximumFractionDigits:3}) + "%";
+    avisos.push(["avi", (feeAplicado(dias) < feePeriodo(dias) ? "Fee disminución adicional" : "Fee mayor al automático") + ": " + fm + " (automático " + fa + "). Se avisa en la nota de HubSpot."]);
+  }
+
+  if(emisorRiesgo){
+    var e = emisorRiesgo;
+    if(!hayDato(e.anticipoPactado)){ avisos.push(["na","Anticipo aprobado: sin dato en el mapeo, no se valida."]); }
+    else if(pctAnticipo > e.anticipoPactado + 0.0001){ avisos.push(["mal","El anticipo digitado " + pctAnticipo + "% supera lo pactado con Riesgo (" + e.anticipoPactado + "%)."]); }
+    else{ avisos.push(["ok","Anticipo " + pctAnticipo + "%, dentro del máximo aprobado (" + e.anticipoPactado + "%)."]); }
+
+    if(!hayDato(e.plazoPactado)){ avisos.push(["na","Plazo aprobado: sin dato en el mapeo, no se valida."]); }
+    else if(dias > e.plazoPactado){ avisos.push(["mal","El plazo de " + dias + " días supera lo pactado con Riesgo (" + e.plazoPactado + " días)."]); }
+    else{ avisos.push(["ok","Plazo de " + dias + " días, dentro del máximo aprobado (" + e.plazoPactado + " días)."]); }
+
+    // Cupo del cliente: se compara contra el valor de las facturas de todas las operaciones.
+    var totalRadicacion = operaciones.reduce(function(a,op){ return a + op.facturas.reduce(function(b,f){ return b + (Number(f.valor)||0); },0); },0);
+    if(!hayDato(e.cupoDisponible)){ avisos.push(["na","Cupo del cliente: sin dato en el mapeo, no se valida."]); }
+    else if(totalRadicacion > e.cupoDisponible){ avisos.push(["mal","El total de la radicación " + pesos(totalRadicacion) + " supera el cupo disponible del cliente " + pesos(e.cupoDisponible) + "."]); }
+    else{ avisos.push(["ok","Total dentro del cupo del cliente (quedan " + pesos(e.cupoDisponible - totalRadicacion) + ")."]); }
+
+    if(estadoMalo(e.estadoCupo)){ avisos.push(["avi","Estado del cupo del cliente: " + e.estadoCupo + "."]); }
+    // Retenciones cambiadas frente a la base de Riesgo: se permite, pero se avisa.
+    var rb = e.retenciones || {};
+    [["c_rf","reteFuente","Retefuente"],["c_ri","reteIca","Reteica"],["c_riva","reteIva","Reteiva"]].forEach(function(m){
+      if((rb[m[1]] === true || rb[m[1]] === false) && marcado(m[0]) !== rb[m[1]]){
+        avisos.push(["avi", m[2] + (marcado(m[0]) ? " aplicada" : " no aplicada") + " a mano (la base de Riesgo dice " + (rb[m[1]] ? "que sí aplica" : "que no aplica") + ")."]);
+      }
+    });
+    // Bloqueo por mora: cualquier día de mora del cliente impide radicar.
+    if(!hayDato(e.diasMora)){ avisos.push(["na","Mora del cliente: sin dato en el mapeo, no se valida."]); }
+    else if(Number(e.diasMora) > 0){ avisos.push(BLOQUEAR_POR_MORA ? ["mal","Cliente bloqueado por mora: " + e.diasMora + " días."] : ["avi","Cliente con " + e.diasMora + " días de mora. Bloqueo por mora suspendido temporalmente para pruebas."]); }
+    else{ avisos.push(["ok","Cliente sin días de mora."]); }
+  }
+
+  operaciones.forEach(function(operacion, io){
+    var etiqueta = operacion.razon_social || ("Operación " + (io+1));
+    if(!operacion.nit){ avisos.push(["mal", etiqueta + ": elige el pagador."]); return; }
+    var total = operacion.facturas.reduce(function(a,f){ return a + (Number(f.valor)||0); },0);
+    if(!operacion.facturas.length){ avisos.push(["mal", etiqueta + ": selecciona al menos una factura."]); }
+    if(!hayDato(operacion.cupoDisponible)){ avisos.push(["na", etiqueta + ": cupo del pagador sin dato en el mapeo, no se valida."]); }
+    else if(total > operacion.cupoDisponible){ avisos.push(["mal", etiqueta + ": supera el cupo disponible del pagador en " + pesos(total - operacion.cupoDisponible) + "."]); }
+    else{ avisos.push(["ok", etiqueta + ": dentro del cupo del pagador (quedan " + pesos(operacion.cupoDisponible - total) + ")."]); }
+    if(estadoMalo(operacion.estadoCupo)){ avisos.push(["avi", etiqueta + ": estado del cupo " + operacion.estadoCupo + "."]); }
+    if(Number(operacion.diasMora) > 0){ avisos.push(BLOQUEAR_POR_MORA ? ["mal", etiqueta + ": pagador bloqueado por mora (" + operacion.diasMora + " días)."] : ["avi", etiqueta + ": pagador con " + operacion.diasMora + " días de mora. Bloqueo suspendido temporalmente para pruebas."]); }
+  });
+
+  $("caja_validaciones").innerHTML = avisos.map(function(a){
+    return '<div class="pv_val pv_val_' + a[0] + '"><span class="pv_punto"></span><span>' + escapeHtml(a[1]) + '</span></div>';
+  }).join("");
+
+  return avisos.filter(function(a){ return a[0] === "mal"; }).length;
+}
+
+function linea(etiqueta, valor, fuerte){
+  return '<div class="pv_liq' + (fuerte ? " pv_liq_fuerte" : "") + '"><span>' + etiqueta + '</span><span>' + valor + '</span></div>';
+}
+
+function pintar_liquidacion(plazo){
+  $("c_operacion_vista").innerHTML = operaciones.map(function(o,i){
+    return '<option value="' + i + '"' + (i===operacion_vista ? " selected" : "") + '>' + escapeHtml(o.razon_social || ("Operación " + (i+1))) + '</option>';
+  }).join("");
+
+  var operacion = operaciones[operacion_vista];
+  if(!operacion){ $("caja_liquidacion").innerHTML = '<p class="pv_ayuda">Agrega un pagador para ver la liquidación.</p>'; return; }
+  var l = liquidar(operacion, operacion_vista, plazo);
+  $("c_tasa_cliente_mv").value = pct(l.nominalMensual) + " M.V.";
+  $("c_tasa_cliente_ea").value = pct(l.tasaClienteEA) + " E.A.";
+
+  $("caja_liquidacion").innerHTML =
+    '<div class="pv_heroe">' +
+      '<div class="pv_heroe_eti">Tasa cliente (M.V.) sobre el valor del anticipo</div>' +
+      '<div class="pv_heroe_tasa">' + pct(l.nominalMensual) + ' M.V.</div>' +
+      '<div class="pv_heroe_sub">' + pct(l.tasaClienteEA) + ' E.A.</div>' +
+      '<div class="pv_heroe_eti" style="margin-top:10px">Total costos cliente</div>' +
+      '<div class="pv_heroe_costo">' + pesos(l.costoTotal) + '</div>' +
+    '</div>' +
+    linea("Valor total factura(s)", pesos(l.valorFactura)) +
+    linea("Días de la operación", l.dias + (l.dias===1 ? " día" : " días")) +
+    linea("Anticipo bruto (" + Math.round(l.pctAnticipo*100) + "% de las facturas)", pesos(l.valorAnticipo)) +
+    linea("(−) Costos operacionales (comisión + IVA" + (l.confecamaras ? " + Confecámaras" : "") + ")", pesos(l.costosCotizador)) +
+    linea("Valor que recibe hoy (anticipo neto)", pesos(l.anticipoNeto), true) +
+    linea("(+) Saldo bruto remanente de la factura", pesos(l.saldoBrutoRemanente)) +
+    linea("(−) Costo máximo de financiación (sin mora)", pesos(l.gananciaInv)) +
+    linea("(=) Saldo neto estimado", pesos(l.remanente)) +
+    linea("Valor a pagar al vencimiento", pesos(l.valorVencimiento), true) +
+    '<p class="pv_titulo_grupo">DETALLE INTERNO (NO MOSTRAR AL CLIENTE)</p>' +
+    linea("Valor del anticipo", pesos(l.valorAnticipo)) +
+    linea("% Fee del período" + (feeEsManual(l.dias) ? " (digitado)" : ""), (l.tasaFee*100).toLocaleString("es-CO",{minimumFractionDigits:3,maximumFractionDigits:3}) + "%") +
+    linea("Comisión Plataform Fee (mín. $100.000)", pesos(l.comisionFee)) +
+    linea("PA + PTG Abogados", pesos(l.pasarela + l.ptg)) +
+    linea("Valor comisión", pesos(l.valorComision)) +
+    linea("IVA comisión", pesos(l.ivaComision)) +
+    linea("Confecámaras (primera operación)", pesos(l.confecamaras)) +
+    linea("(+) Retenciones", pesos(l.totalRetenciones)) +
+    linea("Total costos fijos (comisión + IVA − retenciones)", pesos(l.costosOperacionales)) +
+    linea("Anticipo con devolución de retenciones (Liquidación_final)", pesos(l.anticipoNetoLiq)) +
+    linea("Financiación inversionistas", pesos(l.gananciaInv)) +
+    linea("Total costos cliente", pesos(l.costoTotal), true);
+}
+
+// Tasa máxima final al cliente = "Tasa Total" de la calculadora de Karen (Liquidación_final!P17):
+// (1 + tasa inversionista E.A.) × (1 + fee E.A.) − 1. Es la suma de las dos tasas, compuesta.
+// La tasa máxima del inversionista es la tasa inversionista digitada (en posición propia no hay inversionista).
+function tasaMaximaInversionista(){ return val("c_fondeo") === "propia" ? 0 : num("c_tasa_inv"); }
+// "% FEE" de la calculadora comercial (Liquidación_final!H20):
+// REDONDEAR(SI(días<30; fee 30 días; (1+fee E.A.)^(días/365)-1); 4). Los días son los de la operación hasta la fecha de pago.
+// Fee Plataform base: 0,530 % cada 30 días (L11) o el que digite el comercial; su E.A. sale igual que L17.
+function feeBase30(){ return fee30Pct !== null && fee30Pct > 0 ? fee30Pct / 100 : PARAMS.feeBase30; }
+function feeEABase(){ return Math.round((Math.pow(1 + feeBase30(), 365/30) - 1) * 100000) / 100000; }
+function fee30EsManual(){ return fee30Pct !== null && Math.abs(feeBase30() - PARAMS.feeBase30) > 1e-9; }
+function feePeriodo(dias){
+  if(!(dias > 0)){ return 0; }
+  var f = dias < 30 ? feeBase30() : Math.pow(1 + feeEABase(), dias / 365) - 1;
+  return Math.round(f * 10000) / 10000;
+}
+// Fee que se usa en la liquidación: el digitado por el comercial o, si no hay, el automático (H20).
+function feeAplicado(dias){ return feeManualPct !== null ? Math.round(feeManualPct * 1000) / 100000 : feePeriodo(dias); }
+function feeEsManual(dias){ return feeManualPct !== null && Math.abs(feeAplicado(dias) - feePeriodo(dias)) > 1e-9; }
+// Fee E.A. que realmente se cobra: el de la calculadora (6,643 %) o, si el comercial ajustó el % Fee del período
+// según la matriz, ese fee llevado a efectivo anual. Con él se calcula la tasa máxima final al cliente.
+function feeEAAplicado(dias){ return (dias > 0 && feeEsManual(dias)) ? Math.pow(1 + feeAplicado(dias), 365 / dias) - 1 : feeEABase(); }
+function tasaMaximaFinalCliente(dias){ return Math.round(((1 + tasaMaximaInversionista()/100) * (1 + feeEAAplicado(dias)) - 1) * 10000) / 100; }
+
+function recalcular(repintar){
+  var plazo = resolverPlazo();
+  $("c_tasa_max_inv").value = tasaMaximaInversionista().toLocaleString("es-CO",{minimumFractionDigits:2,maximumFractionDigits:2}) + "% E.A.";
+  $("c_tasa_max_cliente").value = tasaMaximaFinalCliente(plazo.dias).toLocaleString("es-CO",{minimumFractionDigits:2,maximumFractionDigits:2}) + "% E.A.";
+  var feeAuto = feePeriodo(plazo.dias);
+  var f3 = function(x){ return (x * 100).toLocaleString("es-CO",{minimumFractionDigits:3,maximumFractionDigits:3}) + "%"; };
+  $("c_fee_ea").value = f3(feeEAAplicado(plazo.dias)) + (feeEsManual(plazo.dias) || fee30EsManual() ? " (ajustado)" : "");
+  if(feeManualPct === null){ $("c_fee_periodo").value = (feeAuto * 100).toFixed(3); }
+  $("c_fee_auto_txt").textContent = "Automático (H20): " + (feeAuto * 100).toLocaleString("es-CO",{minimumFractionDigits:3,maximumFractionDigits:3}) + "% para " + plazo.dias + " días.";
+  $("b_fee_auto").style.display = feeManualPct === null ? "none" : "";
+  $("c_fecha_efectiva").value = fmtFecha(plazo.pagoAjustado);
+  $("c_dias_usados").value = plazo.dias + (plazo.dias===1 ? " día" : " días");
+  var notaFestivo = $("nota_festivo");
+  if(plazo.ajustado){
+    notaFestivo.textContent = "La fecha de pago cae en " + motivoNoHabil(plazo.pagoBruto) + " (" + fmtFecha(plazo.pagoBruto) + "). Se movió automáticamente al siguiente día hábil: " + fmtFecha(plazo.pagoAjustado) + ".";
+    notaFestivo.className = "pv_nota aviso ver";
+  } else {
+    notaFestivo.className = "pv_nota aviso";
+  }
+
+  if(repintar){ pintar_operaciones(); }
+  var bloqueos = pintar_validaciones(plazo);
+  pintar_liquidacion(plazo);
+
+  var totalFacturas = 0, totalNeto = 0;
+  operaciones.forEach(function(op, io){
+    var l = liquidar(op, io, plazo);
+    totalFacturas += l.valorFactura;
+    totalNeto += l.anticipoNeto;
+  });
+  $("pie_titulo").textContent = operaciones.length + (operaciones.length===1 ? " operación" : " operaciones") + " por " + pesos(totalFacturas);
+  $("pie_sub").textContent = bloqueos
+    ? bloqueos + (bloqueos===1 ? " validación sin pasar" : " validaciones sin pasar")
+    : "Valor que recibe hoy (total): " + pesos(totalNeto);
+  $("b_confirmar").disabled = bloqueos > 0 || radicando;
+  $("b_confirmar").title = bloqueos ? "Corrige las validaciones en rojo antes de radicar." : "";
+}
+
+/* ==================================================================
+   Envío del borrador a n8n → HubSpot + BigQuery
+   ================================================================== */
+function construir_payload(){
+  var plazo = resolverPlazo();
+  var e = emisorRiesgo || {};
+  return {
+    nitEmisor: soloDigitos(val("c_nit")),
+    nombreEmisor: val("c_razon_emisor"),
+    comercial: val("c_comercial").trim(),
+    esPrimeraOperacion: marcado("c_primera"),
+    tipoOperacion: val("c_tipo"),
+    condiciones: {
+      anio: parseInt(val("c_anio"),10),
+      anticipoPct: num("c_anticipo"),
+      anticipoMaximoAprobado: hayDato(e.anticipoPactado) ? e.anticipoPactado : null,
+      tipoFondeo: val("c_fondeo"),
+      tasaInversionistaEA: val("c_fondeo") === "propia" ? 0 : num("c_tasa_inv"),
+      feePlataformEA: Math.round(feeEABase() * 100 * 1000) / 1000,
+      feePlataform30Pct: Math.round(feeBase30() * 100 * 1000) / 1000,
+      feePlataformAjustado: fee30EsManual(),
+      aplicaFNG: marcado("c_fng"),
+      fechaDesembolso: isoLocal(plazo.desembolso),
+      fechaPagoEfectiva: isoLocal(plazo.pagoAjustado),
+      plazoDias: plazo.dias,
+      plazoMaximoAprobado: hayDato(e.plazoPactado) ? e.plazoPactado : null,
+      // Máxima inversionista = tasa inversionista; máxima final = (1+inv)(1+fee)−1 (Tasa Total, calculadora de Karen).
+      tasaMaximaInversionistaEA: tasaMaximaInversionista(),
+      tasaMaximaFinalClienteEA: tasaMaximaFinalCliente(plazo.dias),
+      feeAplicadoEA: Math.round(feeEAAplicado(plazo.dias) * 100 * 1000) / 1000,
+      feePeriodoPct: Math.round(feeAplicado(plazo.dias) * 100 * 1000) / 1000,
+      feePeriodoAutomaticoPct: Math.round(feePeriodo(plazo.dias) * 100 * 1000) / 1000,
+      feeAjustadoManual: feeEsManual(plazo.dias),
+      retenciones: {
+        reteFuente: { aplica: marcado("c_rf"), tasaPct: num("c_tasa_rf") },
+        reteIca: { aplica: marcado("c_ri"), tasaPct: num("c_tasa_ri") },
+        reteIva: { aplica: marcado("c_riva"), tasaPct: num("c_tasa_riva") }
+      }
+    },
+    operaciones: operaciones.map(function(op, io){
+      var l = liquidar(op, io, plazo);
+      return {
+        nitPagador: soloDigitos(op.nit),
+        razonSocialPagador: op.razon_social || "",
+        cupoDisponible: op.cupoDisponible,
+        // Reglas de la contraparte en mapping_rules (Riesgo).
+        confirmacionCorreo: op.confirmacionCorreo,
+        mecanismoNegociacion: op.mecanismoNegociacion,
+        pagoDirecto: op.pagoDirecto,
+        facturas: op.facturas.map(function(f){ return { folio: f.folio, cufe: f.cufe, fechaVencimiento: f.vencimiento, valor: Number(f.valor)||0 }; }),
+        liquidacion: {
+          valorFacturas: l.valorFactura,
+          numeroFacturas: l.cantFacturas,
+          anticipo: l.valorAnticipo,
+          anticipoGirar: l.anticipoNeto,
+          comision: l.valorComision,
+          feeUsado: l.tasaFee,
+          gananciaInversionista: l.gananciaInv,
+          comisionFee: l.comisionFee,
+          costosFijos: l.costosFijos,
+          valorFNG: l.valorFNG,
+          ivaComision: l.ivaComision,
+          totalRetenciones: l.totalRetenciones,
+          costoTotal: l.costoTotal,
+          tasaGlobalEA: l.tasaClienteEA,
+          nominalMensual: l.nominalMensual,
+          efectivoAnualEA: l.efectivoAnualEA,
+          tasaFacturaEA: l.tasaFacturaEA,
+          tasaFacturaMV: l.tasaFacturaMV,
+          remanente: l.remanente,
+          anticipoConRetenciones: l.anticipoNetoLiq,
+          saldoBrutoRemanente: l.saldoBrutoRemanente,
+          valorVencimiento: l.valorVencimiento
+        }
+      };
+    })
+  };
+}
+
+/* ==================================================================
+   Cotización en PDF (formato de la hoja "COTIZADOR v1_22_02_2024" de la
+   calculadora comercial) y mapeo de facturas para la carpeta del cliente.
+   ================================================================== */
+var ANEXO_COTIZADOR = [
+  "*Anticipo Bruto: Valor neto * % de anticipo",
+  "*Costos operacionales: Comision de corretaje + Iva comision de corretaje -  Devolucion de retenciones (Cuando aplique)",
+  "*Anticipo neto: Anticipo Bruto - Costos operaciones (iva incluido) (Incluye devolucion de retenciones)",
+  "*Valor a pagar al vencimiento : Anticipo Bruto + Costo maximo de financiacion sin mora",
+  "*(=) Saldo neto estimado: En factoring donde el pagador nos va a hacer un pago directo - aceptación expresa - debe aparecer este rubro de lo contrario NO",
+  "",
+  "*En caso de presentarse demora en el pago los intereses serán calculados de acuerdo a la máxima tasa permitida por la ley",
+  "** Los valores mostrados son aproximados, podrán cambiar según las fechas de pago de las operaciones y las condiciones de mercado"
+];
+function esSi(v){ return v === true || /^(s[ií]|true|1)$/i.test(String(v == null ? "" : v).trim()); }
+function fechaCorta(d){ return String(d.getDate()).padStart(2,"0") + "/" + String(d.getMonth()+1).padStart(2,"0") + "/" + d.getFullYear(); }
+function nombreArchivo(s){ return String(s || "").replace(/[\\/:*?"<>|]+/g, " ").replace(/\s+/g, " ").trim(); }
+
+// Datos de cada página de la cotización (una por operación / pagador).
+function datosCotizacion(plazo){
+  return operaciones.map(function(op, io){
+    var l = liquidar(op, io, plazo);
+    var filas = [
+      ["ANTICIPO BRUTO", pesos(l.valorAnticipo), true],
+      ["(-) Costos operacionales", pesos(l.costosCotizador), true],
+      ["Comision de corretaje", pesos(l.valorComision)],
+      ["Iva Comision de corretaje", pesos(l.ivaComision)],
+      ["Costo inscripcion garantias mobiliarias IVA incluido", pesos(l.confecamaras)],
+      ["ANTICIPO NETO", pesos(l.anticipoNeto), true],
+      ["(+) Saldo Bruto Remanente de la factura", pesos(l.saldoBrutoRemanente)],
+      ["(-) Costo maximo de financiacion (sin mora)*", pesos(l.gananciaInv)]
+    ];
+    // Regla del anexo: el saldo neto estimado solo aparece cuando el pagador hace pago directo.
+    if(esSi(op.pagoDirecto)){ filas.push(["(=) Saldo neto estimado", pesos(l.remanente)]); }
+    filas.push(["Valor al pagar al vencimiento", pesos(l.valorVencimiento), true]);
+    return {
+      pagador: op.razon_social || "", nitPagador: soloDigitos(op.nit),
+      inicial: [
+        ["Fecha de cotizacion", fechaCorta(new Date())],
+        ["Valor Factura", pesos(l.valorFactura)],
+        ["Porcentaje de anticipo", Math.round(l.pctAnticipo * 100) + "%"],
+        ["Anticipo Bruto", pesos(l.valorAnticipo)],
+        ["Cantidad de facturas", String(l.cantFacturas)],
+        ["Dias de operacion", String(l.dias)],
+        ["Fecha de pago Aproximada", fechaCorta(plazo.pagoAjustado)]
+      ],
+      tasaMV: pct(l.nominalMensual), tasaEA: pct(l.tasaClienteEA),
+      detalle: filas
+    };
+  });
+}
+
+// Generador de PDF propio (sin librerías externas: el Deployer no permite scripts de terceros).
+// Usa las fuentes estándar Helvetica / Helvetica-Bold (codificación WinAnsi) y medidas en mm.
+var ANCHOS_HELVETICA = {
+  n: [28,28,35,55,55,89,66,19,33,33,39,58,28,33,28,28,55,55,55,55,55,55,55,55,55,55,28,28,58,58,58,55,101,66,66,72,72,66,61,78,72,28,50,66,55,83,72,78,66,78,72,66,61,72,66,94,66,66,61,28,28,28,47,55,33,55,55,50,55,55,28,55,55,22,22,50,22,83,55,55,55,55,33,50,28,55,50,72,50,50,50,33,26,33,58,53,53,53,53,53,53,53,53,53,53,53,53,53,53,53,53,53,53,53,53,53,53,53,53,53,53,53,53,53,53,53,53,53,53,33,55,55,55,55,53,55,33,73,37,55,58,53,73,33,40,58,53,53,33,55,53,28,33,53,36,55,53,53,53,61,66,66,66,66,66,66,100,72,66,66,66,66,28,28,28,28,53,72,78,78,78,78,78,53,78,72,72,72,72,53,53,61,55,55,55,55,55,55,89,50,55,55,55,55,28,28,28,28,53,55,55,55,55,55,55,58,61,55,55,55,55,53,53,50],
+  b: [28,33,47,55,55,89,72,24,33,33,39,58,28,33,28,28,55,55,55,55,55,55,55,55,55,55,33,33,58,58,58,61,97,72,72,72,72,66,61,78,72,28,55,72,61,83,72,78,66,78,72,66,61,72,66,94,66,66,61,33,28,33,58,55,33,55,61,55,61,55,33,61,61,28,28,55,28,89,61,61,61,61,39,55,33,61,55,78,55,55,50,39,28,39,58,56,56,56,56,56,56,56,56,56,56,56,56,56,56,56,56,56,56,56,56,56,56,56,56,56,56,56,56,56,56,56,56,56,56,33,55,55,55,55,56,55,33,73,37,55,58,56,73,33,40,58,56,56,33,61,55,28,33,56,36,55,56,56,56,61,72,72,72,72,72,72,100,72,66,66,66,66,28,28,28,28,56,72,78,78,78,78,78,56,78,72,72,72,72,56,56,61,55,55,55,55,55,55,89,55,55,55,55,55,28,28,28,28,56,61,61,61,61,61,61,58,61,61,61,61,61,56,56,55]
+};
+function PdfSimple(){
+  var paginas = [], actual = null, PT = 72 / 25.4, ALTO = 279.4;
+  var latin1 = function(t){ return String(t == null ? "" : t)
+    .replace(/[‒–—―−]/g, "-").replace(/[‘’]/g, "'").replace(/[“”]/g, '"').replace(/…/g, "...")
+    .replace(/[^\x20-\xff]/g, "?"); };
+  var num = function(v){ return (Math.round(v * 100) / 100).toString(); };
+  var color = function(c){ return (c || [0,0,0]).map(function(v){ return num(v / 255); }).join(" "); };
+  var api = {
+    pagina: function(){ actual = []; paginas.push(actual); return api; },
+    ancho: function(t, size, bold){ var tabla = ANCHOS_HELVETICA[bold ? "b" : "n"], s = latin1(t), total = 0;
+      for(var k = 0; k < s.length; k++){ total += (tabla[s.charCodeAt(k) - 32] || 55) * 10; }
+      return total / 1000 * size / PT; },
+    rect: function(x, y, w, h, relleno, borde){
+      if(relleno){ actual.push(color(relleno) + " rg " + num(x*PT) + " " + num((ALTO-y-h)*PT) + " " + num(w*PT) + " " + num(h*PT) + " re f"); }
+      if(borde){ actual.push("0.6 w " + color(borde) + " RG " + num(x*PT) + " " + num((ALTO-y-h)*PT) + " " + num(w*PT) + " " + num(h*PT) + " re S"); }
+      return api; },
+    texto: function(t, x, y, o){ o = o || {}; var size = o.size || 9, s = latin1(t);
+      if(o.align === "right"){ x -= api.ancho(s, size, o.bold); } else if(o.align === "center"){ x -= api.ancho(s, size, o.bold) / 2; }
+      actual.push("BT /" + (o.bold ? "F2" : "F1") + " " + size + " Tf " + color(o.color || [30,30,30]) + " rg " + num(x*PT) + " " + num((ALTO-y)*PT) +
+        " Td (" + s.replace(/\\/g, "\\\\").replace(/\(/g, "\\(").replace(/\)/g, "\\)") + ") Tj ET");
+      return api; },
+    partir: function(t, w, size, bold){ var lineas = [], linea = "";
+      latin1(t).split(" ").forEach(function(p){ var prueba = linea ? linea + " " + p : p;
+        if(linea && api.ancho(prueba, size, bold) > w){ lineas.push(linea); linea = p; } else { linea = prueba; } });
+      if(linea){ lineas.push(linea); } return lineas; },
+    paginas: function(){ return paginas.length; },
+    // Devuelve el PDF como cadena binaria (un carácter = un byte).
+    salida: function(){
+      var objs = [], ids = { pages: 2, f1: 3, f2: 4 }, kids = [];
+      objs[1] = "<< /Type /Catalog /Pages 2 0 R >>";
+      objs[3] = "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>";
+      objs[4] = "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>";
+      paginas.forEach(function(ops, k){ var pid = 5 + k * 2, cid = pid + 1, cont = ops.join("\n");
+        kids.push(pid + " 0 R");
+        objs[pid] = "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 3 0 R /F2 4 0 R >> >> /Contents " + cid + " 0 R >>";
+        objs[cid] = "<< /Length " + cont.length + " >>\nstream\n" + cont + "\nendstream"; });
+      objs[ids.pages] = "<< /Type /Pages /Kids [" + kids.join(" ") + "] /Count " + paginas.length + " >>";
+      var out = "%PDF-1.4\n%\xe2\xe3\xcf\xd3\n", offsets = [];
+      for(var n = 1; n < objs.length; n++){ offsets[n] = out.length; out += n + " 0 obj\n" + objs[n] + "\nendobj\n"; }
+      var xref = out.length;
+      out += "xref\n0 " + objs.length + "\n0000000000 65535 f \n";
+      for(n = 1; n < objs.length; n++){ out += String(offsets[n]).padStart(10, "0") + " 00000 n \n"; }
+      return out + "trailer\n<< /Size " + objs.length + " /Root 1 0 R >>\nstartxref\n" + xref + "\n%%EOF\n";
+    }
+  };
+  return api;
+}
+
+function construirCotizacionPDF(plazo){
+  var pdf = PdfSimple();
+  var morado = [74, 42, 122], blanco = [255, 255, 255], gris = [200, 200, 200], X = 18, W = 180;
+  var cliente = val("c_razon_emisor") || ("NIT " + soloDigitos(val("c_nit")));
+  datosCotizacion(plazo).forEach(function(c){
+    pdf.pagina();
+    pdf.rect(0, 0, 215.9, 14, morado);
+    pdf.texto("plataform", X, 9.5, { size: 14, bold: true, color: blanco });
+    pdf.texto("Cotización de factoring", X + W, 9.5, { align: "right", color: blanco });
+    var y = 24;
+    pdf.texto("Cliente: " + cliente + "   NIT: " + soloDigitos(val("c_nit")), X, y); y += 5;
+    pdf.texto("Pagador: " + c.pagador + "   NIT: " + c.nitPagador, X, y); y += 5;
+    if(val("c_comercial").trim()){ pdf.texto("Comercial: " + val("c_comercial").trim(), X, y); y += 5; }
+    y += 2;
+    var titulo = function(t){ pdf.rect(X, y, W, 6, morado); pdf.texto(t, X + W/2, y + 4.2, { align: "center", bold: true, color: blanco }); y += 6; };
+    var fila = function(a, b, fuerte){ pdf.rect(X, y, W, 6, null, gris); pdf.texto(a, X + 2, y + 4.2, { bold: fuerte }); pdf.texto(b, X + W - 2, y + 4.2, { align: "right", bold: fuerte }); y += 6; };
+    titulo("LIQUIDACION INICIAL");
+    c.inicial.forEach(function(f){ fila(f[0], f[1]); });
+    y += 5;
+    titulo("TASA CLIENTE *(MV) SOBRE VALOR DEL ANTICIPO");
+    fila("M.V.  " + c.tasaMV, "E.A.  " + c.tasaEA, true);
+    y += 5;
+    titulo("DETALLES DE LA OPERACION");
+    c.detalle.forEach(function(f){ fila(f[0], f[1], f[2]); });
+    y += 8;
+    pdf.texto("Anexo a la liquidacion", X, y, { bold: true }); y += 5;
+    pdf.texto("A continuacion, encuentra el detalle de la informacion previamente presentada.", X, y, { size: 8 }); y += 5;
+    ANEXO_COTIZADOR.forEach(function(t){ if(!t){ y += 2; return; }
+      pdf.partir(t, W, 8).forEach(function(l){ pdf.texto(l, X, y, { size: 8 }); y += 3.8; }); });
+  });
+  return pdf;
+}
+
+// Descarga la cadena binaria del PDF como archivo.
+function descargarPDF(binario, nombre){
+  var bytes = new Uint8Array(binario.length);
+  for(var k = 0; k < binario.length; k++){ bytes[k] = binario.charCodeAt(k) & 255; }
+  var url = URL.createObjectURL(new Blob([bytes], { type: "application/pdf" }));
+  var a = document.createElement("a"); a.href = url; a.download = nombre; document.body.appendChild(a); a.click();
+  setTimeout(function(){ URL.revokeObjectURL(url); a.remove(); }, 1000);
+}
+
+// Fecha en el formato del mapeo de Producto: "YYYY.MM.DD" (correo de Álvaro, 27-oct-2026).
+function fechaMapeo(d){ return isoLocal(d).replace(/-/g, "."); }
+
+// Mapeo de facturas de la radicación (CSV con ; para que Excel en español lo abra en columnas).
+// Campos acordados con Operaciones (reunión 26-oct-2026): solo los que el panel ya tiene; el resto queda pendiente de confirmar.
+function mapeoFacturasCSV(plazo){
+  var celda = function(v){ var t = String(v == null ? "" : v); return /[;"\n]/.test(t) ? '"' + t.replace(/"/g, '""') + '"' : t; };
+  var fechaPago = fechaMapeo((plazo || resolverPlazo()).pagoAjustado);
+  var emisor = val("c_razon_emisor"), nitEmisor = soloDigitos(val("c_nit"));
+  var filas = [["Emisor","NIT emisor","Pagador","NIT pagador","Folio","CUFE","Vencimiento","Fecha aproximada de pago","Valor"]];
+  operaciones.forEach(function(op){ op.facturas.forEach(function(f){
+    filas.push([emisor, nitEmisor, op.razon_social, soloDigitos(op.nit), f.folio, f.cufe, f.vencimiento, fechaPago, Math.round(Number(f.valor) || 0)]);
+  }); });
+  return "﻿" + filas.map(function(r){ return r.map(celda).join(";"); }).join("\r\n");
+}
+
+// Crea la carpeta del cliente en Drive (n8n) y descarga la cotización. La descarga ocurre aunque la carpeta falle.
+function crearCarpetaYCotizacion(plazo, negocios){
+  var cliente = val("c_razon_emisor") || ("NIT " + soloDigitos(val("c_nit")));
+  var hoy = isoLocal(new Date());
+  var nombrePdf = nombreArchivo("Cotizacion " + cliente + " " + hoy) + ".pdf";
+  var doc = null, errorPdf = null;
+  try{ doc = construirCotizacionPDF(plazo).salida(); }catch(err){ errorPdf = err && err.message ? err.message : String(err); }
+  var cuerpo = {
+    cliente: { nit: soloDigitos(val("c_nit")), razonSocial: cliente },
+    comercial: val("c_comercial").trim(),
+    fechaRadicacion: hoy,
+    negocios: negocios.map(function(n){ return { dealName: n.dealName || "", dealUrl: n.dealUrl || "" }; }),
+    pagadores: operaciones.map(function(op){ return { nit: soloDigitos(op.nit), razonSocial: op.razon_social || "" }; }),
+    cotizacion: doc ? { nombre: nombrePdf, base64: btoa(doc) } : null,
+    // n8n arma el Excel del mapeo con estas facturas (opportunity_mapping); el CSV queda de respaldo.
+    mapeo: {
+      nombre: nombreArchivo("Mapeo facturas " + cliente + " " + hoy) + ".csv", csv: mapeoFacturasCSV(plazo),
+      nitEmisor: soloDigitos(val("c_nit")), fechaAproximadaPago: fechaMapeo(plazo.pagoAjustado),
+      facturas: [].concat.apply([], operaciones.map(function(op){ return op.facturas.map(function(f){ return { cufe: f.cufe || "", numeroFactura: f.folio || "", nitPagador: soloDigitos(op.nit) }; }); }))
+    }
+  };
+  return fetch(CARPETA_WEBHOOK_URL, { method: "POST", headers: {"Content-Type":"application/json"}, body: JSON.stringify(cuerpo) })
+    .then(function(resp){ return resp.text().then(function(text){ var d = null; try{ d = JSON.parse(text); }catch(e){} return { ok: resp.ok, status: resp.status, data: d }; }); })
+    .then(function(r){
+      var d = r.data || {};
+      if(!r.ok || !d.carpeta || !d.carpeta.id){
+        return { ok: false, mensaje: "No se creó la carpeta en Drive" + (r.status === 404 ? " (el flujo Crear_carpeta_radicacion no está activo en n8n)" : (d.message ? ": " + d.message : " (respuesta " + r.status + ")")) };
+      }
+      var subs = Array.isArray(d.subcarpetas) ? d.subcarpetas : [];
+      return { ok: true, url: d.carpeta.url, mensaje: "Carpeta creada en PROCESAMIENTO COMERCIAL: " + d.carpeta.nombre +
+        (subs.length ? " con " + subs.length + " subcarpetas de pagador" : "") +
+        (Array.isArray(d.errores) && d.errores.length ? ". Revisar: " + d.errores.join(" · ") : "") };
+    })
+    .catch(function(){ return { ok: false, mensaje: "No se pudo contactar el flujo de la carpeta en n8n" }; })
+    .then(function(res){
+      if(doc){ try{ descargarPDF(doc, nombrePdf); }catch(err){ errorPdf = err && err.message ? err.message : String(err); } }
+      res.pdf = doc && !errorPdf ? "Se descargó la cotización (" + nombrePdf + ")." : "No se pudo generar el PDF de la cotización" + (errorPdf ? " (" + errorPdf + ")" : "") + ".";
+      return res;
+    });
+}
+
+$("b_confirmar").addEventListener("click", function(){
+  if(radicando){ return; }
+  var caja = $("caja_aviso");
+  var bloqueos = pintar_validaciones(resolverPlazo());
+  caja.style.display = "block";
+  if(bloqueos){
+    caja.className = "pv_aviso pv_aviso_error";
+    caja.textContent = "Hay " + bloqueos + " validaciones sin pasar. Corrígelas antes de radicar.";
+    return;
+  }
+
+  var boton = this;
+  radicando = true;
+  boton.disabled = true;
+  boton.textContent = "Enviando…";
+  caja.className = "pv_aviso";
+  caja.textContent = "Creando el negocio en HubSpot…";
+  var plazoRadicado = resolverPlazo();
+
+  fetch(RADICAR_WEBHOOK_URL, { method: "POST", headers: {"Content-Type":"application/json"}, body: JSON.stringify(construir_payload()) })
+    .then(function(resp){ return resp.text().then(function(text){ return { ok:resp.ok, status:resp.status, text:text }; }); })
+    .then(function(r){
+      var data = null;
+      try{ data = JSON.parse(r.text); }catch(err){}
+      if(!r.ok){
+        caja.className = "pv_aviso pv_aviso_error";
+        caja.textContent = "n8n respondió con error (" + r.status + "). " + (data && data.message ? data.message : r.text.slice(0,200));
+        return;
+      }
+      var negocios = (data && Array.isArray(data.negocios)) ? data.negocios : [];
+      if(!negocios.length){
+        caja.className = "pv_aviso pv_aviso_error";
+        caja.textContent = (data && data.message ? data.message : "n8n recibió la radicación pero no confirmó ningún negocio creado en HubSpot. Revisa la ejecución del workflow Radicar_negocio en n8n.") +
+          ((data && Array.isArray(data.avisos) && data.avisos.length) ? " · " + data.avisos.join(" · ") : "");
+        return;
+      }
+      var resumen = "Negocio creado en HubSpot: " +
+        negocios.map(function(n){ return (n.dealName || n.razonSocialPagador || ("NIT " + n.nitPagador)) + (n.dealUrl ? " (" + n.dealUrl + ")" : ""); }).join("  |  ");
+      var avisos = (data && Array.isArray(data.avisos)) ? data.avisos : [];
+      if(avisos.length){ resumen += ". Revisar en HubSpot: " + avisos.join(" · "); }
+      var sheetOk = data.sheetRegistrado !== false;
+      resumen += sheetOk ? ". Registrado en el Sheet \"Creados N8N\"." :
+        ". OJO: no se pudo registrar la fila en el Sheet \"Creados N8N\"" + (data.sheetError ? " (" + data.sheetError + ")" : "") + ".";
+      caja.className = "pv_aviso";
+      caja.textContent = resumen + " Creando la carpeta del cliente y la cotización…";
+      return crearCarpetaYCotizacion(plazoRadicado, negocios).then(function(res){
+        caja.className = "pv_aviso " + (sheetOk && res.ok ? "pv_aviso_ok" : "pv_aviso_error");
+        caja.textContent = resumen + " " + res.mensaje + ". " + res.pdf;
+        if(res.ok && res.url){
+          var a = document.createElement("a"); a.href = res.url; a.target = "_blank"; a.rel = "noopener"; a.textContent = " Abrir carpeta";
+          caja.appendChild(a);
+        }
+      });
+    })
+    .catch(function(){
+      caja.className = "pv_aviso pv_aviso_error";
+      caja.textContent = "No se pudo contactar el flujo de n8n (revisa la URL o si el workflow está activo).";
+    })
+    .finally(function(){
+      radicando = false;
+      boton.textContent = "Crear radicación y carpeta";
+      recalcular(false);
+    });
+});
+
+/* ==================================================================
+   Eventos
+   ================================================================== */
+["c_primera","c_tipo","c_anio","c_anticipo","c_tasa_inv","c_fng",
+ "c_desembolso","c_dias","c_fecha_pago","c_rf","c_ri","c_riva","c_tasa_rf","c_tasa_ri","c_tasa_riva"].forEach(function(id){
+  $(id).addEventListener("input", function(){ recalcular(false); });
+  $(id).addEventListener("change", function(){ recalcular(false); });
+});
+$("c_modo_plazo").addEventListener("change", function(){
+  var porFecha = this.value === "fechas";
+  $("w_dias").style.display = porFecha ? "none" : "";
+  $("w_fecha_pago").style.display = porFecha ? "" : "none";
+  recalcular(false);
+});
+$("c_fondeo").addEventListener("change", function(){ aplicarTipoFondeo(); recalcular(false); });
+// % Fee del período: si el comercial lo cambia queda fijo; vacío o "Volver al automático" regresa al H20.
+$("c_fee_periodo").addEventListener("input", function(){
+  var v = parseFloat(this.value);
+  if(!isNaN(v)){ feeManualPct = v; recalcular(false); }
+});
+$("c_fee_periodo").addEventListener("change", function(){
+  if(this.value.trim() === ""){ feeManualPct = null; }
+  recalcular(false);
+});
+$("b_fee_auto").addEventListener("click", function(){ feeManualPct = null; recalcular(false); });
+// Fee Plataform cada 30 días: por defecto 0,530 %; vacío vuelve al valor por defecto.
+$("c_fee").addEventListener("input", function(){
+  var v = parseFloat(this.value);
+  fee30Pct = isNaN(v) ? null : v;
+  recalcular(false);
+});
+$("c_fee").addEventListener("change", function(){
+  if(this.value.trim() === ""){ fee30Pct = null; this.value = (PARAMS.feeBase30 * 100).toFixed(3); }
+  recalcular(false);
+});
+$("c_nit").addEventListener("keydown", function(ev){ if(ev.key === "Enter"){ consultarEmisor(this.value); } });
+$("b_consultar_emisor").addEventListener("click", function(){ consultarEmisor(val("c_nit")); });
+$("c_operacion_vista").addEventListener("change", function(){
+  operacion_vista = parseInt(this.value,10);
+  pintar_liquidacion(resolverPlazo());
+});
+$("b_agregar_pagador").addEventListener("click", function(){
+  operaciones.push(operacionVacia());
+  recalcular(true);
+});
+$("b_limpiar").addEventListener("click", function(){
+  operaciones = [operacionVacia()];
+  operacion_vista = 0;
+  $("caja_aviso").style.display = "none";
+  recalcular(true);
+});
+
+// El nombre del comercial se recuerda en este navegador (igual que la calculadora).
+try{ var guardado = localStorage.getItem("pf_comercial"); if(guardado){ $("c_comercial").value = guardado; } }catch(err){}
+$("c_comercial").addEventListener("input", function(){ try{ localStorage.setItem("pf_comercial", this.value); }catch(err){} });
+
+var hoy = new Date();
+$("c_desembolso").value = isoLocal(hoy);
+$("c_fecha_pago").value = isoLocal(addDays(hoy, 60));
+$("c_fee").value = (PARAMS.feeBase30 * 100).toFixed(3);
+aplicarTipoFondeo();
+recalcular(true);
+</script>
+</body>
+</html>
