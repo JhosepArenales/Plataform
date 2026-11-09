@@ -82,7 +82,7 @@ else if (!properties[pTipo.name]) poner('Tipo de cliente', r.config.TIPO_CLIENTE
 // 7-10. Tasas (prueba piloto 3, 9-nov-2026, Karen):
 //  - Fee del negocio              = % Fee del período (el del panel, automático H20 o digitado)
 //  - Tasa Máxima al Inversionista = tasa inversionista digitada
-//  - Tasa Máxima Final al cliente = Tasa cliente (E.A.) sobre el valor del anticipo (liquidación, K7)
+//  - Tasa Máxima Final al cliente = Tasa cliente (M.V.) sobre el valor del anticipo (liquidación, J7) — ajuste Karen 9-nov 4:34 p.m.
 //  - Efectivo anual               = Fee Plataform (E.A.) que se ve en el panel
 // Cada pagador trae sus condiciones; si el dato es igual en todos se envía, si cambia va "Varios"
 // (o queda vacío con aviso cuando el campo de HubSpot es numérico).
@@ -90,7 +90,7 @@ const condOp = o => o.condiciones || c;
 const aNum = v => (v === null || v === undefined || v === '') ? NaN : Number(v);
 // Sin aproximaciones (prueba piloto 3): se envía el valor tal como está en el panel.
 //  - Lo digitado (tasa inversionista, % Fee del período) va exacto.
-//  - Lo calculado va con los mismos decimales que muestra el panel: tasa cliente E.A. 2 decimales, Fee E.A. 3 decimales.
+//  - Lo calculado va con los mismos decimales que muestra el panel: tasa cliente M.V. 2 decimales, Fee E.A. 3 decimales.
 // dec = null -> sin redondear; texto = cómo se escribe si el campo de HubSpot es de texto.
 function ponerTasa(label, vals, dec, conComa){
   const p = buscar(label);
@@ -108,7 +108,7 @@ function ponerTasa(label, vals, dec, conComa){
 }
 ponerTasa('Fee del negocio', ops.map(o => aNum(condOp(o).feePeriodoPct)), 3, true);
 ponerTasa('Tasa Máxima al Inversionista', ops.map(o => { const k = condOp(o); return aNum(k.tasaMaximaInversionistaEA != null ? k.tasaMaximaInversionistaEA : k.tasaInversionistaEA); }), null);
-ponerTasa('Tasa Máxima Final al cliente', ops.map(o => { const l = o.liquidacion || {}; const v = aNum(l.efectivoAnualEA != null ? l.efectivoAnualEA : l.tasaGlobalEA); return v * 100; }), 2);
+ponerTasa('Tasa Máxima Final al cliente', ops.map(o => aNum((o.liquidacion || {}).nominalMensual) * 100), 2);
 ponerTasa('Efectivo anual', ops.map(o => { const k = condOp(o); return aNum(k.feeAplicadoEA != null ? k.feeAplicadoEA : k.feePlataformEA); }), 3);
 
 // 11-13. Monto, costos, solicitud
