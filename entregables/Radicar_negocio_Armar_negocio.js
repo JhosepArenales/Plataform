@@ -88,23 +88,28 @@ else if (!properties[pTipo.name]) poner('Tipo de cliente', r.config.TIPO_CLIENTE
 // (o queda vacío con aviso cuando el campo de HubSpot es numérico).
 const condOp = o => o.condiciones || c;
 const aNum = v => (v === null || v === undefined || v === '') ? NaN : Number(v);
-function ponerTasa(label, vals, conComa){
+// Sin aproximaciones (prueba piloto 3): se envía el valor tal como está en el panel.
+//  - Lo digitado (tasa inversionista, % Fee del período) va exacto.
+//  - Lo calculado va con los mismos decimales que muestra el panel: tasa cliente E.A. 2 decimales, Fee E.A. 3 decimales.
+// dec = null -> sin redondear; texto = cómo se escribe si el campo de HubSpot es de texto.
+function ponerTasa(label, vals, dec, conComa){
   const p = buscar(label);
   if (!p) { faltantes.push(label); return; }
   if (vals.some(v => !isFinite(v))) { avisos.push(label + ': el panel no envió el dato, quedó vacío.'); return; }
-  const r = vals.map(dos);
+  const r = vals.map(v => dec == null ? v : Number(v.toFixed(dec)));
+  const texto = v => { const t = dec == null ? String(v) : v.toFixed(dec); return conComa ? t.replace('.', ',') : t; };
   if (r.every(v => v === r[0])) {
-    poner(label, p.type === 'number' ? r[0] : (conComa ? String(r[0]).replace('.', ',') : String(r[0])));
+    poner(label, p.type === 'number' ? r[0] : texto(r[0]));
   } else if (p.type === 'number') {
-    avisos.push(label + ' es numérico y cada pagador tiene un valor distinto (' + r.join(' / ') + '): quedó vacío.');
+    avisos.push(label + ' es numérico y cada pagador tiene un valor distinto (' + r.map(texto).join(' / ') + '): quedó vacío.');
   } else {
     poner(label, 'Varios');
   }
 }
-ponerTasa('Fee del negocio', ops.map(o => aNum(condOp(o).feePeriodoPct)), true);
-ponerTasa('Tasa Máxima al Inversionista', ops.map(o => { const k = condOp(o); return aNum(k.tasaMaximaInversionistaEA != null ? k.tasaMaximaInversionistaEA : k.tasaInversionistaEA); }));
-ponerTasa('Tasa Máxima Final al cliente', ops.map(o => { const l = o.liquidacion || {}; const v = aNum(l.efectivoAnualEA != null ? l.efectivoAnualEA : l.tasaGlobalEA); return v * 100; }));
-ponerTasa('Efectivo anual', ops.map(o => { const k = condOp(o); return aNum(k.feeAplicadoEA != null ? k.feeAplicadoEA : k.feePlataformEA); }));
+ponerTasa('Fee del negocio', ops.map(o => aNum(condOp(o).feePeriodoPct)), 3, true);
+ponerTasa('Tasa Máxima al Inversionista', ops.map(o => { const k = condOp(o); return aNum(k.tasaMaximaInversionistaEA != null ? k.tasaMaximaInversionistaEA : k.tasaInversionistaEA); }), null);
+ponerTasa('Tasa Máxima Final al cliente', ops.map(o => { const l = o.liquidacion || {}; const v = aNum(l.efectivoAnualEA != null ? l.efectivoAnualEA : l.tasaGlobalEA); return v * 100; }), 2);
+ponerTasa('Efectivo anual', ops.map(o => { const k = condOp(o); return aNum(k.feeAplicadoEA != null ? k.feeAplicadoEA : k.feePlataformEA); }), 3);
 
 // 11-13. Monto, costos, solicitud
 const total = ops.reduce((a, o) => a + (Number((o.liquidacion || {}).valorFacturas) || 0), 0);
