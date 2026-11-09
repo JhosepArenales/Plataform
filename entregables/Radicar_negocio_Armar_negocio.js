@@ -146,10 +146,28 @@ ops.forEach(o => {
 });
 
 // 26. Nota para Lucy
+// Ajustes de fee (prueba piloto 3, 9-nov-2026): si el comercial sube el fee frente al automático,
+// la nota dice "AUMENTO"; si lo baja, "Disminución".
+const fmt3 = x => (Number(x) || 0).toLocaleString('es-CO', { minimumFractionDigits: 3, maximumFractionDigits: 3 }) + '%';
+const esc = t => String(t == null ? '' : t).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+const ajustesFee = [];
+ops.forEach(o => {
+  const k = condOp(o);
+  const quien = esc(o.razonSocialPagador || ('NIT ' + o.nitPagador));
+  const fp = aNum(k.feePeriodoPct), fa = aNum(k.feePeriodoAutomaticoPct);
+  if (isFinite(fp) && isFinite(fa) && Math.abs(fp - fa) > 1e-9) {
+    ajustesFee.push((fp > fa ? 'AUMENTO' : 'Disminución') + ' de % Fee del período (' + quien + '): ' + fmt3(fp) + ' (automático ' + fmt3(fa) + ').');
+  }
+  const f30 = aNum(k.feePlataform30Pct);
+  if (k.feePlataformAjustado && isFinite(f30) && Math.abs(f30 - 0.53) > 1e-9) {
+    ajustesFee.push((f30 > 0.53 ? 'AUMENTO' : 'Disminución') + ' de Fee Plataform (' + quien + '): ' + fmt3(f30) + ' cada 30 días (por defecto 0,530%).');
+  }
+});
 const pagadores = ops.map(o => o.razonSocialPagador || 'NIT ' + o.nitPagador).join(', ');
 const notaHtml = '<p>@' + r.config.MENCIONAR + ' cliente listo para operar. Resumen para tu validación y aprobación.</p>' +
   '<p>Cliente: ' + n.nombreEmisor + ' (NIT ' + n.nitEmisor + ')<br>Pagador(es): ' + pagadores +
-  '<br>Valor: ' + pesos(total) + '<br>Radicado por: ' + (nombreComercial || 'sin nombre') + ' desde el panel comercial.</p>';
+  '<br>Valor: ' + pesos(total) + '<br>Radicado por: ' + (nombreComercial || 'sin nombre') + ' desde el panel comercial.</p>' +
+  (ajustesFee.length ? '<p><strong>Ajustes de fee:</strong><br>' + ajustesFee.join('<br>') + '</p>' : '');
 
 return [{ json: { body: { properties, associations }, dealName, pagadores, notaHtml,
   ownerId: r.owner ? String(r.owner.id) : null, avisos, faltantes, invalidos } }];
