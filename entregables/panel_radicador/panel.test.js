@@ -347,7 +347,7 @@ test('Fee Plataform se muestra en dos campos: cada 30 días (editable, 0,530 % p
   assert.equal(els.c_fee.value, '0.530');
   assert.equal(els.c_fee_ea.value, '6,643%');
   const html = leerHtml();
-  assert.ok(html.includes('<input type="number" id="c_fee" step="0.001" min="0" value="0.530">'));
+  assert.ok(html.includes('<input type="text" inputmode="decimal" id="c_fee" value="0.530">'));
   assert.ok(html.includes('Fee Plataform (E.A.)'));
 });
 
@@ -464,8 +464,30 @@ test('condiciones por pagador: cada operación guarda su anticipo y plazo, y el 
   assert.equal(api.getOperaciones()[1].cond.c_anticipo, '80', 'lo digitado en la segunda no se pierde');
 });
 
+test('los campos numéricos aceptan coma o punto decimal', () => {
+  const { api, els } = cargarPanel();
+  els.c_tasa_inv.value = '16,99';
+  assert.equal(api.tasaMaximaInversionista(), 16.99);
+  els.c_tasa_inv.value = '16.99';
+  assert.equal(api.tasaMaximaInversionista(), 16.99);
+  assert.ok(!leerHtml().includes('type="number"'), 'ningún campo es type=number (no dejaba escribir la coma)');
+});
+
+test('con dos pagadores, calcular la otra operación no borra lo que se está digitando', () => {
+  const { api, els } = cargarPanel();
+  els.c_tasa_inv.value = '16';
+  api.setOperaciones([{ nit: '1', razon_social: 'A', facturas: [{ folio: 'A1', valor: 1000000 }], cond: null, guardado: null }]);
+  const ops = api.getOperaciones();
+  ops[0].cond = api.leerCondiciones();
+  ops.push({ nit: '2', razon_social: 'B', facturas: [{ folio: 'B1', valor: 2000000 }], cond: null, guardado: null });
+  api.activarOperacion(1);
+  els.c_fee.value = '0,';                 // a medio digitar
+  api.construir_payload();                 // recalcula la operación A con sus condiciones
+  assert.equal(els.c_fee.value, '0,', 'el campo del formulario no se toca');
+});
+
 test('index.html llegó idéntico al probado (huella SHA-256)', () => {
   const contenido = leerHtml().replace(/\r\n/g, '\n').replace(/\s+$/, '');
   const huella = require('node:crypto').createHash('sha256').update(contenido).digest('hex');
-  assert.equal(huella, '57bf3759484ed1967277497532b6ca483b7bf0ed8576d0fc4c2769a129113717');
+  assert.equal(huella, '27081ab0bc6f94b605daecc00583f72f66cb873cf483bc3103fc6e34a1aa1c03');
 });

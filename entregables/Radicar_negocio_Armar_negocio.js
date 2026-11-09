@@ -98,10 +98,11 @@ function ponerTasa(label, vals, dec, conComa){
   if (vals.some(v => !isFinite(v))) { avisos.push(label + ': el panel no envió el dato, quedó vacío.'); return; }
   const r = vals.map(v => dec == null ? v : Number(v.toFixed(dec)));
   const texto = v => { const t = dec == null ? String(v) : v.toFixed(dec); return conComa ? t.replace('.', ',') : t; };
-  if (r.every(v => v === r[0])) {
+  // Con varias operaciones el campo del negocio dice "Varios" (el detalle de cada una va en la nota).
+  if (!varios) {
     poner(label, p.type === 'number' ? r[0] : texto(r[0]));
   } else if (p.type === 'number') {
-    avisos.push(label + ' es numérico y cada pagador tiene un valor distinto (' + r.map(texto).join(' / ') + '): quedó vacío.');
+    avisos.push(label + ' es un campo numérico en HubSpot y no admite "Varios": quedó vacío (cambiar la propiedad a texto).');
   } else {
     poner(label, 'Varios');
   }
@@ -119,8 +120,9 @@ if (String(n.tipoOperacion).toLowerCase() === 'factoring') poner('Quién asume c
 else avisos.push('Quién asume costos: la regla solo está definida para Factoring (llegó "' + n.tipoOperacion + '").');
 poner('Solicitud', 'Operación');
 // Plazo y desembolso de la liquidación del panel (fecha en AAAA-MM-DD, formato que acepta HubSpot).
-poner('Plazo de la Op. en días', c.plazoDias);
-poner('Fecha primer desembolso', c.fechaDesembolso);
+ponerTasa('Plazo de la Op. en días', ops.map(o => aNum(condOp(o).plazoDias)), null);
+// Fecha primer desembolso: la más temprana de las operaciones.
+poner('Fecha primer desembolso', ops.map(o => condOp(o).fechaDesembolso).filter(Boolean).sort()[0] || c.fechaDesembolso);
 
 // 14-22. Un bloque por pagador
 const siNo = v => { const k = norm(v); return k === 'si' ? 'Sí' : k === 'no' ? 'No' : v; };
@@ -150,29 +152,32 @@ ops.forEach(o => {
   else avisos.push('El pagador ' + (o.razonSocialPagador || o.nitPagador) + ' no existe como empresa en HubSpot: no se asoció.');
 });
 
-// 26. Nota para Lucy
-// Ajustes de fee (prueba piloto 3, 9-nov-2026): si el comercial sube el fee frente al automático,
-// la nota dice "AUMENTO"; si lo baja, "Disminución".
-const fmt3 = x => (Number(x) || 0).toLocaleString('es-CO', { minimumFractionDigits: 3, maximumFractionDigits: 3 }) + '%';
+// 26. Nota para Lucy (prueba piloto 3, 9-nov-2026): un solo comentario con un bloque por operación
+// y los valores de cada una. Del fee solo se indica "AUMENTO DE FEE" cuando el comercial lo subió.
 const esc = t => String(t == null ? '' : t).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-const ajustesFee = [];
-ops.forEach(o => {
-  const k = condOp(o);
-  const quien = esc(o.razonSocialPagador || ('NIT ' + o.nitPagador));
-  const fp = aNum(k.feePeriodoPct), fa = aNum(k.feePeriodoAutomaticoPct);
-  if (isFinite(fp) && isFinite(fa) && Math.abs(fp - fa) > 1e-9) {
-    ajustesFee.push((fp > fa ? 'AUMENTO' : 'Disminución') + ' de % Fee del período (' + quien + '): ' + fmt3(fp) + ' (automático ' + fmt3(fa) + ').');
-  }
-  const f30 = aNum(k.feePlataform30Pct);
-  if (k.feePlataformAjustado && isFinite(f30) && Math.abs(f30 - 0.53) > 1e-9) {
-    ajustesFee.push((f30 > 0.53 ? 'AUMENTO' : 'Disminución') + ' de Fee Plataform (' + quien + '): ' + fmt3(f30) + ' cada 30 días (por defecto 0,530%).');
-  }
+const pctTxt = (v, dec) => isFinite(v) ? (dec == null ? String(v) : v.toFixed(dec)).replace('.', ',') + '%' : 'sin dato';
+const subioFee = k => {
+  const fp = aNum(k.feePeriodoPct), fa = aNum(k.feePeriodoAutomaticoPct), f30 = aNum(k.feePlataform30Pct);
+  return (isFinite(fp) && isFinite(fa) && fp - fa > 1e-9) || (!!k.feePlataformAjustado && isFinite(f30) && f30 - 0.53 > 1e-9);
+};
+const bloques = ops.map((o, i) => {
+  const k = condOp(o), l = o.liquidacion || {};
+  const inv = aNum(k.tasaMaximaInversionistaEA != null ? k.tasaMaximaInversionistaEA : k.tasaInversionistaEA);
+  const fee = aNum(k.feeAplicadoEA != null ? k.feeAplicadoEA : k.feePlataformEA);
+  return '<p><strong>Operación ' + (i + 1) + ': ' + esc(o.razonSocialPagador || 'NIT ' + o.nitPagador) + ' (NIT ' + esc(o.nitPagador) + ')</strong>' +
+    '<br>Valor: ' + pesos(l.valorFacturas) +
+    '<br>Plazo de la Op. en días: ' + (isFinite(aNum(k.plazoDias)) ? k.plazoDias + ' días' : 'sin dato') +
+    '<br>Fee del negocio (% Fee del período): ' + pctTxt(aNum(k.feePeriodoPct), 3) +
+    '<br>Tasa Máxima al Inversionista: ' + pctTxt(inv, null) +
+    '<br>Tasa Máxima Final al cliente (M.V.): ' + pctTxt(aNum(l.nominalMensual) * 100, 2) +
+    '<br>Efectivo anual (Fee Plataform E.A.): ' + pctTxt(fee, 3) +
+    (subioFee(k) ? '<br><strong>AUMENTO DE FEE</strong>' : '') + '</p>';
 });
 const pagadores = ops.map(o => o.razonSocialPagador || 'NIT ' + o.nitPagador).join(', ');
 const notaHtml = '<p>@' + r.config.MENCIONAR + ' cliente listo para operar. Resumen para tu validación y aprobación.</p>' +
-  '<p>Cliente: ' + n.nombreEmisor + ' (NIT ' + n.nitEmisor + ')<br>Pagador(es): ' + pagadores +
-  '<br>Valor: ' + pesos(total) + '<br>Radicado por: ' + (nombreComercial || 'sin nombre') + ' desde el panel comercial.</p>' +
-  (ajustesFee.length ? '<p><strong>Ajustes de fee:</strong><br>' + ajustesFee.join('<br>') + '</p>' : '');
+  '<p>Cliente: ' + esc(n.nombreEmisor) + ' (NIT ' + n.nitEmisor + ')<br>Valor total: ' + pesos(total) +
+  '<br>Radicado por: ' + esc(nombreComercial || 'sin nombre') + ' desde el panel comercial.</p>' +
+  bloques.join('');
 
 return [{ json: { body: { properties, associations }, dealName, pagadores, notaHtml,
   ownerId: r.owner ? String(r.owner.id) : null, avisos, faltantes, invalidos } }];

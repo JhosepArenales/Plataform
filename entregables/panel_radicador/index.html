@@ -49,7 +49,7 @@ input[readonly].pv_alerta{color:var(--alerta);border-color:var(--alerta)}
 .pv_check{display:flex;align-items:center;gap:7px;font-size:12.5px;color:var(--tinta);margin:0}
 .pv_check input{width:auto;margin:0}
 .pv_ret{display:flex;align-items:center;gap:8px}
-.pv_ret input[type=number]{width:80px}
+.pv_ret input[inputmode=decimal]{width:80px}
 .pv_boton{font:inherit;font-size:12.5px;background:var(--superficie);color:var(--tinta);border:1px solid var(--borde_fuerte);border-radius:6px;padding:7px 13px;cursor:pointer}
 .pv_boton:hover{background:var(--marca_clara)}
 .pv_boton:disabled{opacity:.55;cursor:not-allowed}
@@ -191,7 +191,7 @@ td input{padding:5px 7px;font-size:12.5px}
             <div><label for="c_desembolso">Fecha de desembolso (aprox.)</label><input type="date" id="c_desembolso"></div>
             <div><label for="c_modo_plazo">Plazo definido por</label>
               <select id="c_modo_plazo"><option value="dias">Número de días</option><option value="fechas">Fecha de pago</option></select></div>
-            <div id="w_dias"><label for="c_dias">Plazo en días</label><input type="number" id="c_dias" value="60" min="0" step="1"></div>
+            <div id="w_dias"><label for="c_dias">Plazo en días</label><input type="text" inputmode="decimal" id="c_dias" value="60"></div>
             <div id="w_fecha_pago" style="display:none"><label for="c_fecha_pago">Fecha propuesta de pago</label><input type="date" id="c_fecha_pago"></div>
           </div>
           <div class="pv_rejilla" style="margin-top:12px">
@@ -209,7 +209,7 @@ td input{padding:5px 7px;font-size:12.5px}
         <div class="pv_bloque_cabeza"><h2><span class="pv_paso">4</span>Tasas de la operación</h2></div>
         <div class="pv_cuerpo">
           <div class="pv_rejilla">
-            <div><label for="c_anticipo">% Anticipo</label><input type="number" id="c_anticipo" value="90" min="0" max="100" step="1">
+            <div><label for="c_anticipo">% Anticipo</label><input type="text" inputmode="decimal" id="c_anticipo" value="90">
               <p class="pv_ayuda">% del valor de las facturas que se gira hoy.</p></div>
             <div><label for="c_anticipo_max">Anticipo máximo aprobado</label><input type="text" id="c_anticipo_max" readonly placeholder="—">
               <p class="pv_ayuda">Tope aprobado por Riesgo. No editable.</p></div>
@@ -217,9 +217,9 @@ td input{padding:5px 7px;font-size:12.5px}
               <select id="c_fondeo"><option value="crowd">Crowd</option><option value="propia">Posición propia</option><option value="estructurado">Fondeador estructurado</option></select></div>
           </div>
           <div class="pv_rejilla" style="margin-top:12px">
-            <div id="w_tasa_inv"><label for="c_tasa_inv">Tasa inversionista (E.A. %)</label><input type="number" id="c_tasa_inv" step="0.01" placeholder="Ej: 14">
+            <div id="w_tasa_inv"><label for="c_tasa_inv">Tasa inversionista (E.A. %)</label><input type="text" inputmode="decimal" id="c_tasa_inv" placeholder="Ej: 14">
               <p class="pv_ayuda">Tasa a ofrecer en el mercado.</p></div>
-            <div><label for="c_fee">Fee Plataform (cada 30 días, %)</label><input type="number" id="c_fee" step="0.001" min="0" value="0.530">
+            <div><label for="c_fee">Fee Plataform (cada 30 días, %)</label><input type="text" inputmode="decimal" id="c_fee" value="0.530">
               <p class="pv_ayuda" id="c_fee_ayuda">Por defecto 0,530 % (calculadora comercial). Editable si se necesita subir o bajar; si lo cambias, se avisa en la nota de HubSpot.</p></div>
             <div><label for="c_fee_ea">Fee Plataform (E.A.)</label><input type="text" id="c_fee_ea" readonly>
               <p class="pv_ayuda">No editable: el fee expresado en efectivo anual.</p></div>
@@ -235,7 +235,7 @@ td input{padding:5px 7px;font-size:12.5px}
             <div><label for="c_tasa_cliente_mv">Tasa cliente (M.V.) sobre el valor del anticipo</label><input type="text" id="c_tasa_cliente_mv" readonly placeholder="—">
               <p class="pv_ayuda">De la operación que se ve en la Liquidación.</p></div>
             <div><label for="c_tasa_cliente_ea">Tasa cliente (E.A.) sobre el valor del anticipo</label><input type="text" id="c_tasa_cliente_ea" readonly placeholder="—"></div>
-            <div><label for="c_fee_periodo">% Fee del período</label><input type="number" id="c_fee_periodo" step="0.001" min="0">
+            <div><label for="c_fee_periodo">% Fee del período</label><input type="text" inputmode="decimal" id="c_fee_periodo">
               <p class="pv_ayuda"><span id="c_fee_auto_txt">Automático: "% FEE" (H20) de la calculadora comercial.</span> Editable según la matriz de fee; si lo cambias, se recalcula la tasa máxima y se avisa en la nota de HubSpot. <button type="button" class="pv_boton_texto" id="b_fee_auto" style="display:none">Volver al automático</button></p></div>
           </div>
           <div class="pv_nota aviso" id="nota_fondeo"></div>
@@ -247,9 +247,9 @@ td input{padding:5px 7px;font-size:12.5px}
         <div class="pv_bloque_cabeza"><h2><span class="pv_paso">5</span>Retenciones que aplican</h2></div>
         <div class="pv_cuerpo">
           <div class="pv_rejilla">
-            <div class="pv_ret"><label class="pv_check"><input type="checkbox" id="c_rf" checked>Retefuente</label><input type="number" id="c_tasa_rf" value="11" step="0.001"><span class="pv_ayuda" style="margin:0">% sobre comisión</span></div>
-            <div class="pv_ret"><label class="pv_check"><input type="checkbox" id="c_ri">Reteica</label><input type="number" id="c_tasa_ri" value="0.966" step="0.001"><span class="pv_ayuda" style="margin:0">% sobre comisión</span></div>
-            <div class="pv_ret"><label class="pv_check"><input type="checkbox" id="c_riva">Reteiva</label><input type="number" id="c_tasa_riva" value="15" step="0.001"><span class="pv_ayuda" style="margin:0">% sobre el IVA</span></div>
+            <div class="pv_ret"><label class="pv_check"><input type="checkbox" id="c_rf" checked>Retefuente</label><input type="text" inputmode="decimal" id="c_tasa_rf" value="11"><span class="pv_ayuda" style="margin:0">% sobre comisión</span></div>
+            <div class="pv_ret"><label class="pv_check"><input type="checkbox" id="c_ri">Reteica</label><input type="text" inputmode="decimal" id="c_tasa_ri" value="0.966"><span class="pv_ayuda" style="margin:0">% sobre comisión</span></div>
+            <div class="pv_ret"><label class="pv_check"><input type="checkbox" id="c_riva">Reteiva</label><input type="text" inputmode="decimal" id="c_tasa_riva" value="15"><span class="pv_ayuda" style="margin:0">% sobre el IVA</span></div>
           </div>
           <p class="pv_ayuda" id="nota_retenciones" style="margin-top:10px">Al consultar el emisor se marcan solas según la base de retenciones (mapping_rules).</p>
         </div>
@@ -349,9 +349,17 @@ var moneda = new Intl.NumberFormat("es-CO",{maximumFractionDigits:0});
 function pesos(v){ return "$ " + moneda.format(Math.round(v||0)); }
 function pct(v){ return (v*100).toLocaleString("es-CO",{minimumFractionDigits:2,maximumFractionDigits:2}) + "%"; }
 function $(id){ return document.getElementById(id); }
-function val(id){ return $(id).value; }
-function num(id){ var n = parseFloat(val(id)); return isNaN(n) ? 0 : n; }
-function marcado(id){ return $(id).checked; }
+// condTemporal: condiciones de otra operación mientras se calcula su liquidación (no toca el formulario).
+var condTemporal = null;
+function val(id){ return (condTemporal && Object.prototype.hasOwnProperty.call(condTemporal, id)) ? condTemporal[id] : $(id).value; }
+// Números digitados con coma o punto decimal: "0,6" = "0.6"; "1.234,5" = 1234.5.
+function aNumero(v){
+  var t = String(v == null ? "" : v).trim().replace(/\s/g, "").replace(/%/g, "");
+  if(t.indexOf(",") >= 0){ t = t.replace(/\./g, "").replace(",", "."); }
+  return parseFloat(t);
+}
+function num(id){ var n = aNumero(val(id)); return isNaN(n) ? 0 : n; }
+function marcado(id){ return (condTemporal && id === "c_fng") ? !!condTemporal.fng : $(id).checked; }
 function escapeHtml(s){ return String(s==null?"":s).replace(/[&<>"']/g, function(c){ return {"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[c]; }); }
 function soloDigitos(v){ return String(v||"").replace(/\D/g,""); }
 function hayDato(v){ return v !== null && v !== undefined && v !== ""; }
@@ -638,9 +646,10 @@ function ponerCondiciones(c){
 // Ejecuta fn(plazo) con las condiciones guardadas de esa operación (la activa usa el formulario tal cual).
 function usarCondiciones(op, fn, plazoDado){
   if(!op || !op.cond || operaciones[operacion_vista] === op){ return fn(plazoDado || resolverPlazo()); }
-  var actual = leerCondiciones();
-  ponerCondiciones(op.cond);
-  try{ return fn(resolverPlazo()); } finally { ponerCondiciones(actual); }
+  // Se calcula con sus condiciones sin escribir en el formulario (así no se borra lo que se está digitando).
+  var antes = condTemporal, f30 = fee30Pct, fm = feeManualPct;
+  condTemporal = op.cond; fee30Pct = op.cond.fee30Pct; feeManualPct = op.cond.feeManualPct;
+  try{ return fn(resolverPlazo()); } finally { condTemporal = antes; fee30Pct = f30; feeManualPct = fm; }
 }
 function firmaOperacion(op, cond){ return JSON.stringify([op.nit, op.facturas.map(claveFactura), cond]); }
 function estaGuardada(op, io){
@@ -1438,7 +1447,7 @@ $("c_modo_plazo").addEventListener("change", function(){
 $("c_fondeo").addEventListener("change", function(){ aplicarTipoFondeo(); recalcular(false); });
 // % Fee del período: si el comercial lo cambia queda fijo; vacío o "Volver al automático" regresa al H20.
 $("c_fee_periodo").addEventListener("input", function(){
-  var v = parseFloat(this.value);
+  var v = aNumero(this.value);
   if(!isNaN(v)){ feeManualPct = v; recalcular(false); }
 });
 $("c_fee_periodo").addEventListener("change", function(){
@@ -1448,7 +1457,7 @@ $("c_fee_periodo").addEventListener("change", function(){
 $("b_fee_auto").addEventListener("click", function(){ feeManualPct = null; recalcular(false); });
 // Fee Plataform cada 30 días: por defecto 0,530 %; vacío vuelve al valor por defecto.
 $("c_fee").addEventListener("input", function(){
-  var v = parseFloat(this.value);
+  var v = aNumero(this.value);
   fee30Pct = isNaN(v) ? null : v;
   recalcular(false);
 });
