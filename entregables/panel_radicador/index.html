@@ -1054,13 +1054,19 @@ function recalcular(repintar){
     totalFacturas += l.valorFactura;
     totalNeto += l.anticipoNeto;
   });
+  // Dice cuál operación falta guardar (antes solo decía "guarda la operación" y no se sabía cuál).
+  var sinGuardar = operaciones.map(function(op, io){ return estaGuardada(op, io) ? null : nombreOperacion(op, io); }).filter(Boolean);
+  var activaSinGuardar = operaciones[operacion_vista] && !estaGuardada(operaciones[operacion_vista], operacion_vista);
+  var faltaGuardar = "Falta guardar: " + sinGuardar.join(", ") + ". " + (activaSinGuardar && sinGuardar.length === 1
+    ? "Dale Guardar operación."
+    : "Ábrela con \"Ver / editar condiciones\" (en la sección 2) y dale Guardar operación.");
   $("pie_titulo").textContent = operaciones.length + (operaciones.length===1 ? " operación" : " operaciones") + " por " + pesos(totalFacturas);
   $("pie_sub").textContent = bloqueos
     ? bloqueos + (bloqueos===1 ? " validación sin pasar" : " validaciones sin pasar")
-    : (!guardadas ? "Guarda la operación para poder crear la radicación." : "Valor que recibe hoy (total): " + pesos(totalNeto));
+    : (!guardadas ? faltaGuardar : "Valor que recibe hoy (total): " + pesos(totalNeto));
   $("b_guardar_op").disabled = radicando || !activa || estaGuardada(activa, operacion_vista);
   $("b_confirmar").disabled = bloqueos > 0 || !guardadas || radicando;
-  $("b_confirmar").title = bloqueos ? "Corrige las validaciones en rojo antes de radicar." : (!guardadas ? "Guarda todas las operaciones antes de crear la radicación." : "");
+  $("b_confirmar").title = bloqueos ? "Corrige las validaciones en rojo antes de radicar." : (!guardadas ? faltaGuardar : "");
 }
 
 /* ==================================================================

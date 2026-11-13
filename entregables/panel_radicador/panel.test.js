@@ -496,8 +496,14 @@ test('unificación de campos (prueba piloto 4): nombre de HubSpot y nombre inter
   assert.ok(html.includes('id="c_fondeo"'), 'el tipo de fondeo se mantiene');
 });
 
+test('si falta guardar una operación, el pie dice cuál y cómo guardarla', () => {
+  const html = leerHtml();
+  assert.ok(html.includes('var faltaGuardar = "Falta guardar: " + sinGuardar.join(", ")'));
+  assert.ok(html.includes('Ábrela con \\"Ver / editar condiciones\\" (en la sección 2) y dale Guardar operación.'));
+});
+
 test('index.html llegó idéntico al probado (huella SHA-256)', () => {
   const contenido = leerHtml().replace(/\r\n/g, '\n').replace(/\s+$/, '');
   const huella = require('node:crypto').createHash('sha256').update(contenido).digest('hex');
-  assert.equal(huella, '9d6bb47074adfbd39eab8e37c943b85ee75f81b13df37bf8190203af8596ff3c');
+  assert.equal(huella, '261d970fe2577c6b289834dfff3b444c65b16befb0b00cf414283cc7c1922ce2');
 });
