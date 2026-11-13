@@ -348,7 +348,7 @@ test('Fee Plataform se muestra en dos campos: cada 30 días (editable, 0,530 % p
   assert.equal(els.c_fee_ea.value, '6,643%');
   const html = leerHtml();
   assert.ok(html.includes('<input type="text" inputmode="decimal" id="c_fee" value="0.530">'));
-  assert.ok(html.includes('Fee Plataform (E.A.)'));
+  assert.ok(html.includes('Efectivo anual (Fee Plataform E.A.)'));
 });
 
 test('Fee Plataform cada 30 días editable: cambia el E.A., el fee del período y avisa', () => {
@@ -486,8 +486,18 @@ test('con dos pagadores, calcular la otra operación no borra lo que se está di
   assert.equal(els.c_fee.value, '0,', 'el campo del formulario no se toca');
 });
 
+test('unificación de campos (prueba piloto 4): nombre de HubSpot y nombre interno entre paréntesis', () => {
+  const html = leerHtml();
+  for (const t of ['Fee del negocio (% Fee del período)', 'Tasa Máxima al Inversionista (Rentabilidad máxima, E.A. %)',
+    'Tasa Máxima Final al cliente (Tasa M.V. anticipo)', 'Efectivo anual (Fee Plataform E.A.)', 'Plazo de la Op. en días (Plazo en días)',
+    'Fecha primer desembolso (Fecha de desembolso aprox.)', 'Nombre empresa (Razón social del emisor)', 'Nit empresa (NIT del emisor)']) {
+    assert.ok(html.includes(t), t);
+  }
+  assert.ok(html.includes('id="c_fondeo"'), 'el tipo de fondeo se mantiene');
+});
+
 test('index.html llegó idéntico al probado (huella SHA-256)', () => {
   const contenido = leerHtml().replace(/\r\n/g, '\n').replace(/\s+$/, '');
   const huella = require('node:crypto').createHash('sha256').update(contenido).digest('hex');
-  assert.equal(huella, '27081ab0bc6f94b605daecc00583f72f66cb873cf483bc3103fc6e34a1aa1c03');
+  assert.equal(huella, '9d6bb47074adfbd39eab8e37c943b85ee75f81b13df37bf8190203af8596ff3c');
 });

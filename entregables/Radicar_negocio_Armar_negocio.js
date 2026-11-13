@@ -15,7 +15,12 @@ const norm = s => String(s == null ? '' : s).normalize('NFD').replace(/[̀-ͯ]/g
   .toLowerCase().replace(/[^a-z0-9#]+/g, ' ').trim();
 const porEtiqueta = {};
 props.forEach(p => { const k = norm(p.label); if (!porEtiqueta[k]) porEtiqueta[k] = p; });
-const buscar = label => porEtiqueta[norm(label)] || null;
+// Unificación de campos (prueba piloto 4, 12-nov-2026): si en HubSpot la etiqueta queda "Nombre (nombre interno)",
+// también se encuentra por el nombre sin el paréntesis final.
+const porBase = {};
+const base = t => norm(String(t == null ? '' : t).replace(/\s*\([^()]*\)\s*$/, ''));
+props.forEach(p => { const k = base(p.label); if (k && !porBase[k]) porBase[k] = p; });
+const buscar = label => porEtiqueta[norm(label)] || porBase[norm(label)] || porBase[base(label)] || null;
 const dos = x => Math.round((Number(x) || 0) * 100) / 100;
 const pct = x => dos(x).toLocaleString('es-CO', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + '%';
 const pesos = x => '$ ' + Math.round(Number(x) || 0).toLocaleString('es-CO');
@@ -165,17 +170,17 @@ const bloques = ops.map((o, i) => {
   const inv = aNum(k.tasaMaximaInversionistaEA != null ? k.tasaMaximaInversionistaEA : k.tasaInversionistaEA);
   const fee = aNum(k.feeAplicadoEA != null ? k.feeAplicadoEA : k.feePlataformEA);
   return '<p><strong>Operación ' + (i + 1) + ': ' + esc(o.razonSocialPagador || 'NIT ' + o.nitPagador) + ' (NIT ' + esc(o.nitPagador) + ')</strong>' +
-    '<br>Valor: ' + pesos(l.valorFacturas) +
-    '<br>Plazo de la Op. en días: ' + (isFinite(aNum(k.plazoDias)) ? k.plazoDias + ' días' : 'sin dato') +
+    '<br>Valor (monto del negocio): ' + pesos(l.valorFacturas) +
+    '<br>Plazo de la Op. en días (Plazo en días): ' + (isFinite(aNum(k.plazoDias)) ? k.plazoDias + ' días' : 'sin dato') +
     '<br>Fee del negocio (% Fee del período): ' + pctTxt(aNum(k.feePeriodoPct), 3) +
-    '<br>Tasa Máxima al Inversionista: ' + pctTxt(inv, null) +
-    '<br>Tasa Máxima Final al cliente (M.V.): ' + pctTxt(aNum(l.nominalMensual) * 100, 2) +
+    '<br>Tasa Máxima al Inversionista (Rentabilidad máxima): ' + pctTxt(inv, null) +
+    '<br>Tasa Máxima Final al cliente (Tasa M.V. anticipo): ' + pctTxt(aNum(l.nominalMensual) * 100, 2) +
     '<br>Efectivo anual (Fee Plataform E.A.): ' + pctTxt(fee, 3) +
     (subioFee(k) ? '<br><strong>AUMENTO DE FEE</strong>' : '') + '</p>';
 });
 const pagadores = ops.map(o => o.razonSocialPagador || 'NIT ' + o.nitPagador).join(', ');
 const notaHtml = '<p>@' + r.config.MENCIONAR + ' cliente listo para operar. Resumen para tu validación y aprobación.</p>' +
-  '<p>Cliente: ' + esc(n.nombreEmisor) + ' (NIT ' + n.nitEmisor + ')<br>Valor total: ' + pesos(total) +
+  '<p>Cliente: ' + esc(n.nombreEmisor) + ' (NIT ' + n.nitEmisor + ')<br>Valor (monto del negocio) total: ' + pesos(total) +
   '<br>Radicado por: ' + esc(nombreComercial || 'sin nombre') + ' desde el panel comercial.</p>' +
   bloques.join('');
 

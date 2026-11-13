@@ -136,13 +136,13 @@ td input{padding:5px 7px;font-size:12.5px}
         <div class="pv_bloque_cabeza"><h2><span class="pv_paso">1</span>Emisor</h2></div>
         <div class="pv_cuerpo">
           <div class="pv_rejilla">
-            <div><label for="c_nit">NIT del emisor</label>
+            <div><label for="c_nit">Nit empresa (NIT del emisor)</label>
               <div style="display:flex;gap:6px">
                 <input type="text" id="c_nit" inputmode="numeric" placeholder="Solo números, sin DV" style="flex:1">
                 <button type="button" class="pv_boton" id="b_consultar_emisor" style="white-space:nowrap">Consultar</button>
               </div>
             </div>
-            <div><label for="c_razon_emisor">Razón social del emisor</label>
+            <div><label for="c_razon_emisor">Nombre empresa (Razón social del emisor)</label>
               <input type="text" id="c_razon_emisor" readonly placeholder="Se completa al consultar el NIT">
               <p class="pv_cupo_estado" id="c_razon_emisor_estado"></p>
             </div>
@@ -155,7 +155,7 @@ td input{padding:5px 7px;font-size:12.5px}
               <p class="pv_ayuda">Más de 0 días bloquea la radicación (regla suspendida temporalmente para pruebas).</p></div>
           </div>
           <div class="pv_rejilla" style="margin-top:12px">
-            <div><label for="c_comercial">Comercial que cotiza</label>
+            <div><label for="c_comercial">Propietario del negocio (Comercial que cotiza)</label>
               <input type="text" id="c_comercial" placeholder="Nombre y apellido, como en HubSpot">
               <p class="pv_ayuda">Con este nombre se asigna el propietario del negocio en HubSpot y se sacan tus iniciales.</p></div>
             <div><label for="c_anio">Año</label>
@@ -188,10 +188,10 @@ td input{padding:5px 7px;font-size:12.5px}
           <p class="pv_ayuda" style="margin:0 0 10px">Si la fecha de pago cae en día no hábil en Colombia se muestra una alerta; la fecha no se mueve y se usan los días digitados.</p>
           <p class="pv_nota aviso ver" id="txt_editando" style="margin:0 0 10px"></p>
           <div class="pv_rejilla">
-            <div><label for="c_desembolso">Fecha de desembolso (aprox.)</label><input type="date" id="c_desembolso"></div>
+            <div><label for="c_desembolso">Fecha primer desembolso (Fecha de desembolso aprox.)</label><input type="date" id="c_desembolso"></div>
             <div><label for="c_modo_plazo">Plazo definido por</label>
               <select id="c_modo_plazo"><option value="dias">Número de días</option><option value="fechas">Fecha de pago</option></select></div>
-            <div id="w_dias"><label for="c_dias">Plazo en días</label><input type="text" inputmode="decimal" id="c_dias" value="60"></div>
+            <div id="w_dias"><label for="c_dias">Plazo de la Op. en días (Plazo en días)</label><input type="text" inputmode="decimal" id="c_dias" value="60"></div>
             <div id="w_fecha_pago" style="display:none"><label for="c_fecha_pago">Fecha propuesta de pago</label><input type="date" id="c_fecha_pago"></div>
           </div>
           <div class="pv_rejilla" style="margin-top:12px">
@@ -217,25 +217,25 @@ td input{padding:5px 7px;font-size:12.5px}
               <select id="c_fondeo"><option value="crowd">Crowd</option><option value="propia">Posición propia</option><option value="estructurado">Fondeador estructurado</option></select></div>
           </div>
           <div class="pv_rejilla" style="margin-top:12px">
-            <div id="w_tasa_inv"><label for="c_tasa_inv">Tasa inversionista (E.A. %)</label><input type="text" inputmode="decimal" id="c_tasa_inv" placeholder="Ej: 14">
+            <div id="w_tasa_inv"><label for="c_tasa_inv">Tasa Máxima al Inversionista (Rentabilidad máxima, E.A. %)</label><input type="text" inputmode="decimal" id="c_tasa_inv" placeholder="Ej: 14">
               <p class="pv_ayuda">Tasa a ofrecer en el mercado.</p></div>
             <div><label for="c_fee">Fee Plataform (cada 30 días, %)</label><input type="text" inputmode="decimal" id="c_fee" value="0.530">
               <p class="pv_ayuda" id="c_fee_ayuda">Por defecto 0,530 % (calculadora comercial). Editable si se necesita subir o bajar; si lo cambias, se avisa en la nota de HubSpot.</p></div>
-            <div><label for="c_fee_ea">Fee Plataform (E.A.)</label><input type="text" id="c_fee_ea" readonly>
+            <div><label for="c_fee_ea">Efectivo anual (Fee Plataform E.A.)</label><input type="text" id="c_fee_ea" readonly>
               <p class="pv_ayuda">No editable: el fee expresado en efectivo anual.</p></div>
             <div><label class="pv_check" style="margin-top:22px"><input type="checkbox" id="c_fng">Operación con garantía FNG</label>
               <p class="pv_ayuda">Informativo: la calculadora comercial no suma FNG al costo.</p></div>
           </div>
           <div class="pv_rejilla" style="margin-top:12px">
-            <div><label for="c_tasa_max_inv">Tasa máxima inversionista (E.A. %)</label><input type="text" id="c_tasa_max_inv" readonly placeholder="—">
+            <div><label for="c_tasa_max_inv">Tasa Máxima al Inversionista (valor que va a HubSpot)</label><input type="text" id="c_tasa_max_inv" readonly placeholder="—">
               <p class="pv_ayuda">No editable: es la tasa inversionista que digita el comercial (calculadora de Paulo).</p></div>
             <!-- Oculta de la vista (genera confusión); se sigue calculando y enviando a HubSpot. -->
             <div id="w_tasa_max_cliente" style="display:none"><label for="c_tasa_max_cliente">Tasa máxima final al cliente (E.A. %)</label><input type="text" id="c_tasa_max_cliente" readonly placeholder="—">
               <p class="pv_ayuda">No editable: (1 + tasa inversionista) × (1 + Fee Plataform E.A.) − 1, igual que la "Tasa Total" de la calculadora de Karen. Si ajustas el % Fee del período, se recalcula con ese fee. No debe superar la tasa de usura del mes.</p></div>
-            <div><label for="c_tasa_cliente_mv">Tasa cliente (M.V.) sobre el valor del anticipo</label><input type="text" id="c_tasa_cliente_mv" readonly placeholder="—">
+            <div><label for="c_tasa_cliente_mv">Tasa Máxima Final al cliente (Tasa M.V. anticipo)</label><input type="text" id="c_tasa_cliente_mv" readonly placeholder="—">
               <p class="pv_ayuda">De la operación que se ve en la Liquidación.</p></div>
-            <div><label for="c_tasa_cliente_ea">Tasa cliente (E.A.) sobre el valor del anticipo</label><input type="text" id="c_tasa_cliente_ea" readonly placeholder="—"></div>
-            <div><label for="c_fee_periodo">% Fee del período</label><input type="text" inputmode="decimal" id="c_fee_periodo">
+            <div><label for="c_tasa_cliente_ea">Tasa E.A. anticipo (Tasa cliente E.A. sobre el anticipo)</label><input type="text" id="c_tasa_cliente_ea" readonly placeholder="—"></div>
+            <div><label for="c_fee_periodo">Fee del negocio (% Fee del período)</label><input type="text" inputmode="decimal" id="c_fee_periodo">
               <p class="pv_ayuda"><span id="c_fee_auto_txt">Automático: "% FEE" (H20) de la calculadora comercial.</span> Editable según la matriz de fee; si lo cambias, se recalcula la tasa máxima y se avisa en la nota de HubSpot. <button type="button" class="pv_boton_texto" id="b_fee_auto" style="display:none">Volver al automático</button></p></div>
           </div>
           <div class="pv_nota aviso" id="nota_fondeo"></div>
@@ -813,8 +813,8 @@ function pintar_operaciones(){
       '</div>' +
       '<div class="pv_operacion_cuerpo">' +
         '<div class="pv_rejilla" style="margin-bottom:6px">' +
-          '<div><label>Pagador</label><select data-op="' + io + '" data-pagador-select="1">' + opciones + '</select></div>' +
-          '<div><label>NIT del pagador</label><input type="text" readonly class="pv_mono" value="' + escapeHtml(operacion.nit || "") + '"></div>' +
+          '<div><label>Razón social - Pagador</label><select data-op="' + io + '" data-pagador-select="1">' + opciones + '</select></div>' +
+          '<div><label>Nit Pagador (NIT del pagador)</label><input type="text" readonly class="pv_mono" value="' + escapeHtml(operacion.nit || "") + '"></div>' +
           '<div><label>Cupo disponible del pagador</label><input type="text" readonly value="' + (operacion.nit ? (hayCupo ? pesos(operacion.cupoDisponible) : "sin dato en el mapeo") : "") + '"></div>' +
           '<div><label>Estado del cupo del pagador</label><input type="text" readonly class="' + (estadoMalo(operacion.estadoCupo) ? "pv_alerta" : "") + '" value="' + escapeHtml(operacion.nit ? (operacion.estadoCupo || "sin dato en el mapeo") : "") + '"></div>' +
         '</div>' +
@@ -959,14 +959,14 @@ function pintar_liquidacion(plazo){
 
   $("caja_liquidacion").innerHTML =
     '<div class="pv_heroe">' +
-      '<div class="pv_heroe_eti">Tasa cliente (M.V.) sobre el valor del anticipo</div>' +
+      '<div class="pv_heroe_eti">Tasa Máxima Final al cliente (Tasa M.V. anticipo)</div>' +
       '<div class="pv_heroe_tasa">' + pct(l.nominalMensual) + ' M.V.</div>' +
       '<div class="pv_heroe_sub">' + pct(l.tasaClienteEA) + ' E.A.</div>' +
       '<div class="pv_heroe_eti" style="margin-top:10px">Total costos cliente</div>' +
       '<div class="pv_heroe_costo">' + pesos(l.costoTotal) + '</div>' +
     '</div>' +
-    linea("Valor total factura(s)", pesos(l.valorFactura)) +
-    linea("Días de la operación", l.dias + (l.dias===1 ? " día" : " días")) +
+    linea("Valor (monto del negocio) · Valor total factura(s)", pesos(l.valorFactura)) +
+    linea("Plazo de la Op. en días", l.dias + (l.dias===1 ? " día" : " días")) +
     linea("Anticipo bruto (" + Math.round(l.pctAnticipo*100) + "% de las facturas)", pesos(l.valorAnticipo)) +
     linea("(−) Costos operacionales (comisión + IVA" + (l.confecamaras ? " + Confecámaras" : "") + ")", pesos(l.costosCotizador)) +
     linea("Valor que recibe hoy (anticipo neto)", pesos(l.anticipoNeto), true) +
@@ -976,7 +976,7 @@ function pintar_liquidacion(plazo){
     linea("Valor a pagar al vencimiento", pesos(l.valorVencimiento), true) +
     '<p class="pv_titulo_grupo">DETALLE INTERNO (NO MOSTRAR AL CLIENTE)</p>' +
     linea("Valor del anticipo", pesos(l.valorAnticipo)) +
-    linea("% Fee del período" + (feeEsManual(l.dias) ? " (digitado)" : ""), (l.tasaFee*100).toLocaleString("es-CO",{minimumFractionDigits:3,maximumFractionDigits:3}) + "%") +
+    linea("Fee del negocio (% Fee del período)" + (feeEsManual(l.dias) ? " (digitado)" : ""), (l.tasaFee*100).toLocaleString("es-CO",{minimumFractionDigits:3,maximumFractionDigits:3}) + "%") +
     linea("Comisión Plataform Fee (mín. $100.000)", pesos(l.comisionFee)) +
     linea("PA + PTG Abogados", pesos(l.pasarela + l.ptg)) +
     linea("Valor comisión", pesos(l.valorComision)) +
