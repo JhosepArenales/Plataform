@@ -513,6 +513,9 @@ function listarPagadores(nitEmisor, miToken){
     nota.textContent = "Trayendo pagadores y facturas… BigQuery está tardando, puede tomar hasta 1 minuto.";
     nota.className = "pv_nota aviso ver";
   };
+  // Aviso inmediato: sin esto el cupo, la mora y los pagadores quedaban en "—" sin decir que se estaban trayendo.
+  nota.textContent = "Trayendo cupo, mora, retenciones, pagadores y facturas de BigQuery… puede tardar varios minutos mientras mapping_rules esté lenta.";
+  nota.className = "pv_nota aviso ver";
   var errorDe = function(nombre){ return function(err){ return { __error: nombre + " (" + (err && err.message ? err.message : "sin respuesta") + ")" }; }; };
   Promise.all([
     postBigQuery(LISTAR_PAGADORES_WEBHOOK_URL + q, avisarEspera).catch(errorDe("pagadores y cupo")),
@@ -546,9 +549,12 @@ function listarPagadores(nitEmisor, miToken){
       }
       var sinFacturas = viables.length - conFacturas.length;
       if(sinFacturas){ mensajes.push(sinFacturas + " pagador(es) viables aún no tienen facturas de este emisor en la base: aparecen con (0) y no se pueden radicar hasta que se carguen."); }
+      // El emisor existe (ya lo encontró Consultar cupo): si Listar pagadores vuelve vacío, casi siempre es que BigQuery no terminó a tiempo.
+      if(!fallos.length && !(dataPag && dataPag.encontrado)){ mensajes.unshift("No llegaron el cupo, la mora ni los pagadores del cliente: BigQuery no terminó a tiempo en el flujo Listar pagadores (o el NIT no está como cliente en mapping_rules). Vuelve a darle Consultar; si se repite, revisa la ejecución en n8n."); }
+      var sinDatosPag = !fallos.length && !(dataPag && dataPag.encontrado);
       if(fallos.length){ mensajes.unshift("No se pudo traer: " + fallos.join(" y ") + ". Revisa ese flujo en n8n."); }
       nota.textContent = mensajes.join(" ");
-      nota.className = "pv_nota " + (fallos.length ? "error" : "aviso") + (mensajes.length ? " ver" : "");
+      nota.className = "pv_nota " + (fallos.length || sinDatosPag ? "error" : "aviso") + (mensajes.length ? " ver" : "");
 
       // Si una operación tenía un pagador que ya no está en la lista, se limpia.
       operaciones.forEach(function(op){

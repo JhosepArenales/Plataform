@@ -502,8 +502,20 @@ test('si falta guardar una operación, el pie dice cuál y cómo guardarla', () 
   assert.ok(html.includes('Ábrela con \\"Ver / editar condiciones\\" (en la sección 2) y dale Guardar operación.'));
 });
 
+test('si el emisor existe pero Listar pagadores vuelve vacío, el panel lo dice (no queda en "—" sin aviso)', async () => {
+  const { api, els } = cargarPanel();
+  const resp = (d) => Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(d) });
+  api.setFetch((url) => url.includes('Listar_facturas') ? resp({ encontrado: true, facturas: [] }) : resp({ encontrado: false }));
+  api.setToken(1);
+  api.listarPagadores('901314381', 1);
+  assert.ok(els.nota_pagadores.textContent.startsWith('Trayendo cupo, mora'), 'aviso mientras carga');
+  await new Promise((r) => setTimeout(r, 20));
+  assert.ok(els.nota_pagadores.textContent.includes('BigQuery no terminó a tiempo en el flujo Listar pagadores'));
+  assert.ok(els.nota_pagadores.className.includes('error'));
+});
+
 test('index.html llegó idéntico al probado (huella SHA-256)', () => {
   const contenido = leerHtml().replace(/\r\n/g, '\n').replace(/\s+$/, '');
   const huella = require('node:crypto').createHash('sha256').update(contenido).digest('hex');
-  assert.equal(huella, '261d970fe2577c6b289834dfff3b444c65b16befb0b00cf414283cc7c1922ce2');
+  assert.equal(huella, '50bb0497d6b37e6cf0a5dc3582adaf84c273938518704238a79f0372f9a6ea23');
 });
