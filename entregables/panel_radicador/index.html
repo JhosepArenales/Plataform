@@ -153,6 +153,9 @@ td input{padding:5px 7px;font-size:12.5px}
             <div><label for="c_mora_cliente">Días de mora</label>
               <input type="text" id="c_mora_cliente" readonly placeholder="—">
               <p class="pv_ayuda">Más de 0 días bloquea la radicación (regla suspendida temporalmente para pruebas).</p></div>
+            <div><label for="c_certificado">Vencimiento del certificado</label>
+              <input type="text" id="c_certificado" readonly placeholder="—">
+              <p class="pv_ayuda">Campo fecha_vencimiento_certificado (mapping_rules). Si está vencido no se puede radicar hasta que se actualice.</p></div>
           </div>
           <div class="pv_rejilla" style="margin-top:12px">
             <div><label for="c_comercial">Propietario del negocio (Comercial que cotiza)</label>
@@ -409,6 +412,24 @@ function esDiaHabilCO(date){
   return !festivosColombia(date.getFullYear()).has(isoLocal(date));
 }
 function motivoNoHabil(date){ var dow = date.getDay(); return (dow === 0 || dow === 6) ? "fin de semana" : "festivo nacional"; }
+// Vigencia del certificado del cliente (Prueba piloto 6, 19-nov-2026): fecha_vencimiento_certificado de mapping_rules.
+// Acepta "AAAA-MM-DD" (DATE/DATETIME de BigQuery), "DD/MM/AAAA" o segundos epoch (TIMESTAMP). Vigente si vence hoy o después.
+function fechaCertificado(v){
+  if(v === null || v === undefined || String(v).trim() === ""){ return null; }
+  var t = String(v).trim(), m;
+  if((m = t.match(/^(\d{4})-(\d{2})-(\d{2})/))){ return new Date(+m[1], +m[2]-1, +m[3]); }
+  if((m = t.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/))){ return new Date(+m[3], +m[2]-1, +m[1]); }
+  if(/^\d+(\.\d+)?(E\d+)?$/i.test(t)){ var d = new Date(Number(t) * 1000); return new Date(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()); }   // fecha UTC: un TIMESTAMP a medianoche no se corre al día anterior en Colombia
+  return undefined;   // llegó algo que no es fecha
+}
+function estadoCertificado(e){
+  var v = e ? e.fechaVencimientoCertificado : null;
+  var f = fechaCertificado(v);
+  if(f === null){ return { estado: "sin_dato" }; }
+  if(f === undefined || isNaN(f)){ return { estado: "invalido", texto: String(v) }; }
+  var hoy = parseISO(isoLocal(new Date()));
+  return { estado: f < hoy ? "vencido" : "vigente", fecha: f };
+}
 function siguienteDiaHabilCO(date){ var d = new Date(date); while(!esDiaHabilCO(d)){ d = addDays(d,1); } return d; }
 
 function resolverPlazo(){
@@ -611,6 +632,11 @@ function pintarEmisor(){
   var mora = e && hayDato(e.diasMora) ? Number(e.diasMora) : null;
   pintarRo("c_mora_cliente", mora === null ? null : mora + (mora === 1 ? " día" : " días") + (mora > 0 ? (BLOQUEAR_POR_MORA ? " · BLOQUEADO" : " · EN MORA (no bloquea en pruebas)") : ""));
   $("c_mora_cliente").classList.toggle("pv_alerta", mora !== null && mora > 0);
+  var cert = estadoCertificado(e);
+  pintarRo("c_certificado", !e || cert.estado === "sin_dato" ? null
+    : cert.estado === "invalido" ? cert.texto + " (no es una fecha válida)"
+    : fmtFecha(cert.fecha) + (cert.estado === "vencido" ? " · VENCIDO" : " · Vigente"));
+  $("c_certificado").classList.toggle("pv_alerta", !!e && (cert.estado === "vencido" || cert.estado === "invalido"));
   pintarRo("c_anticipo_max", e && hayDato(e.anticipoPactado) ? e.anticipoPactado + "%" : null);
   pintarRo("c_plazo_max", e && hayDato(e.plazoPactado) ? e.plazoPactado + " días" : null);
 }
@@ -917,6 +943,12 @@ function calcularAvisos(plazo, soloIo){
     if(!hayDato(e.diasMora)){ avisos.push(["na","Mora del cliente: sin dato en el mapeo, no se valida."]); }
     else if(Number(e.diasMora) > 0){ avisos.push(BLOQUEAR_POR_MORA ? ["mal","Cliente bloqueado por mora: " + e.diasMora + " días."] : ["avi","Cliente con " + e.diasMora + " días de mora. Bloqueo por mora suspendido temporalmente para pruebas."]); }
     else{ avisos.push(["ok","Cliente sin días de mora."]); }
+    // Certificado vencido: bloquea la radicación hasta que se actualice la vigencia (Prueba piloto 6).
+    var cert = estadoCertificado(e);
+    if(cert.estado === "sin_dato"){ avisos.push(["na","Vencimiento del certificado: sin dato en el mapeo, no se valida."]); }
+    else if(cert.estado === "invalido"){ avisos.push(["avi","Vencimiento del certificado: \"" + cert.texto + "\" no es una fecha válida, no se pudo validar. Revisa fecha_vencimiento_certificado en el mapeo."]); }
+    else if(cert.estado === "vencido"){ avisos.push(["mal","Certificado vencido desde el " + fmtFecha(cert.fecha) + ". No se puede radicar hasta que se actualice la vigencia."]); }
+    else{ avisos.push(["ok","Certificado vigente hasta el " + fmtFecha(cert.fecha) + "."]); }
   }
 
   operaciones.forEach(function(operacion, io){

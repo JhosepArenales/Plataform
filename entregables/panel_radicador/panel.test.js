@@ -514,8 +514,42 @@ test('si el emisor existe pero Listar pagadores vuelve vacío, el panel lo dice 
   assert.ok(els.nota_pagadores.className.includes('error'));
 });
 
+test('certificado vencido bloquea la radicación; vigente pasa; sin dato no se valida (Prueba piloto 6)', () => {
+  const { api, els } = cargarPanel();
+  els.c_tasa_inv.value = '15';
+  const iso = (d) => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+  const hoy = new Date();
+  const ayer = new Date(hoy.getFullYear(), hoy.getMonth(), hoy.getDate() - 1);
+  const base = { diasMora: 0, anticipoPactado: 95, plazoPactado: 120, cupoDisponible: 1e12 };
+  api.setOperaciones([{ nit: '1', razon_social: 'P', cupoDisponible: 1e12, facturas: [{ valor: 1000000 }] }]);
+  const plazo = { dias: 60, diasPTG: 60, fechaInvalida: false };
+
+  api.setEmisorRiesgo({ ...base, fechaVencimientoCertificado: iso(ayer) });
+  assert.equal(api.pintar_validaciones(plazo), 1, 'vencido = 1 validación en rojo');
+  assert.ok(els.caja_validaciones.innerHTML.includes('pv_val_mal"><span class="pv_punto"></span><span>Certificado vencido desde el'));
+
+  api.setEmisorRiesgo({ ...base, fechaVencimientoCertificado: iso(hoy) });
+  assert.equal(api.pintar_validaciones(plazo), 0, 'vence hoy = todavía vigente');
+  assert.ok(els.caja_validaciones.innerHTML.includes('Certificado vigente hasta el'));
+
+  api.setEmisorRiesgo({ ...base, fechaVencimientoCertificado: String(Math.floor(ayer.getTime() / 1000) + 3600) });
+  assert.equal(api.pintar_validaciones(plazo), 1, 'TIMESTAMP de BigQuery (segundos) también se entiende');
+
+  api.setEmisorRiesgo({ ...base, fechaVencimientoCertificado: '31/12/2099' });
+  assert.equal(api.pintar_validaciones(plazo), 0);
+
+  api.setEmisorRiesgo({ ...base, fechaVencimientoCertificado: null });
+  assert.equal(api.pintar_validaciones(plazo), 0);
+  assert.ok(els.caja_validaciones.innerHTML.includes('Vencimiento del certificado: sin dato en el mapeo, no se valida.'));
+
+  api.setEmisorRiesgo({ ...base, fechaVencimientoCertificado: 'pendiente' });
+  assert.equal(api.pintar_validaciones(plazo), 0, 'un texto raro avisa pero no bloquea');
+  assert.ok(els.caja_validaciones.innerHTML.includes('no es una fecha válida'));
+  assert.ok(leerHtml().includes('<label for="c_certificado">Vencimiento del certificado</label>'));
+});
+
 test('index.html llegó idéntico al probado (huella SHA-256)', () => {
   const contenido = leerHtml().replace(/\r\n/g, '\n').replace(/\s+$/, '');
   const huella = require('node:crypto').createHash('sha256').update(contenido).digest('hex');
-  assert.equal(huella, '50bb0497d6b37e6cf0a5dc3582adaf84c273938518704238a79f0372f9a6ea23');
+  assert.equal(huella, '81a02c739cb210d261426886bc8e889b4ee24030e57938f064997f8167eb0277');
 });
