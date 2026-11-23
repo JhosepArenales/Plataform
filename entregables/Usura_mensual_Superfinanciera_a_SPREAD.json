@@ -1,0 +1,204 @@
+{
+  "name": "Usura mensual: Superfinanciera -> hoja SPREAD",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 7 1-5 * *"
+            }
+          ]
+        }
+      },
+      "name": "Días 1 a 5, 7:00 a.m.",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "url": "https://www.superfinanciera.gov.co/publicaciones/10116308/",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "text"
+            }
+          }
+        }
+      },
+      "name": "Superfinanciera: comunicado",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        240,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Busca en el comunicado de Superfinanciera la tasa de usura del mes en curso.\n// PRIMERA EJECUCIÓN: correr a mano y revisar \"evidencia\"; si el formato de la página no coincide, ajustar aquí.\nconst MESES = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];\nconst hoy = new Date(new Date().toLocaleString('en-US', { timeZone: 'America/Bogota' }));\nconst mesTxt = MESES[hoy.getMonth()], anio = String(hoy.getFullYear());\nconst html = String($input.first().json.data || $input.first().json.body || $input.first().json || '');\nconst texto = html.replace(/<script[\\s\\S]*?<\\/script>/gi, ' ').replace(/<style[\\s\\S]*?<\\/style>/gi, ' ')\n  .replace(/<[^>]+>/g, ' ').replace(/&nbsp;/g, ' ').replace(/&aacute;/g, 'á').replace(/&eacute;/g, 'é').replace(/&iacute;/g, 'í')\n  .replace(/&oacute;/g, 'ó').replace(/&uacute;/g, 'ú').replace(/\\s+/g, ' ');\nconst bajo = texto.toLowerCase();\n// Ventanas de texto donde aparece \"usura\": se toman los porcentajes que trae cada una.\nconst candidatos = [];\nlet i = bajo.indexOf('usura');\nwhile (i >= 0) {\n  const ventana = texto.slice(Math.max(0, i - 400), i + 400);\n  const vb = ventana.toLowerCase();\n  const pcts = [...ventana.matchAll(/(\\d{1,2}[.,]\\d{1,2})\\s?%/g)].map(x => parseFloat(x[1].replace(',', '.'))).filter(n => n > 10 && n < 80);\n  if (pcts.length) candidatos.push({ delMes: vb.includes(mesTxt) && vb.includes(anio), pcts, ventana: ventana.slice(0, 400) });\n  i = bajo.indexOf('usura', i + 5);\n}\nconst elegido = candidatos.find(c => c.delMes) || null;\n// La usura de consumo y ordinario es el porcentaje mayor de la ventana (el interés bancario corriente es menor).\nconst usura = elegido ? Math.max(...elegido.pcts) : null;\nreturn [{ json: {\n  encontrado: usura !== null, mesTexto: mesTxt + ' ' + anio, usuraEA: usura,\n  evidencia: elegido ? elegido.ventana : (candidatos[0] ? candidatos[0].ventana : texto.slice(0, 400)),\n  candidatos: candidatos.length\n} }];"
+      },
+      "name": "Extraer usura del mes",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        480,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "url": "https://sheets.googleapis.com/v4/spreadsheets/1hNZgqrJPhIEcKd4RaJh0VMlpia-N2ns0XVLmQPiXIG8/values/'Hoja%201'!A1%3AC2",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleSheetsOAuth2Api",
+        "options": {}
+      },
+      "name": "Sheets: leer SPREAD",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        720,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// No toca C2 (tope Plataform): el radicador lo calcula como usura - 0,05 y la hoja lo hace con su fórmula.\n// Solo escribe si encontró la usura del mes y la hoja aún no está en este mes.\nconst e = $('Extraer usura del mes').first().json;\nconst v = ($('Sheets: leer SPREAD').first().json.values || []);\nconst actual = String((v[0] || [])[1] || '').trim().toLowerCase();\nif (!e.encontrado) throw new Error('No se encontró la tasa de usura de ' + e.mesTexto + ' en Superfinanciera. Revisar a mano y actualizar B1/B2 de la hoja SPREAD. Evidencia: ' + e.evidencia);\nconst yaEsta = actual === e.mesTexto;\nreturn [{ json: { escribir: !yaEsta, mesTexto: e.mesTexto, usuraEA: e.usuraEA,\n  body: { valueInputOption: 'USER_ENTERED', data: [\n    { range: \"'Hoja 1'!B1\", values: [[e.mesTexto]] },\n    { range: \"'Hoja 1'!B2\", values: [[String(e.usuraEA) + '%']] }\n  ] } } }];"
+      },
+      "name": "¿Hay que actualizar?",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        960,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.escribir }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "name": "Si",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1200,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://sheets.googleapis.com/v4/spreadsheets/1hNZgqrJPhIEcKd4RaJh0VMlpia-N2ns0XVLmQPiXIG8/values:batchUpdate",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleSheetsOAuth2Api",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.body) }}",
+        "options": {}
+      },
+      "name": "Sheets: escribir usura del mes",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1440,
+        -80
+      ]
+    }
+  ],
+  "connections": {
+    "Días 1 a 5, 7:00 a.m.": {
+      "main": [
+        [
+          {
+            "node": "Superfinanciera: comunicado",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Superfinanciera: comunicado": {
+      "main": [
+        [
+          {
+            "node": "Extraer usura del mes",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extraer usura del mes": {
+      "main": [
+        [
+          {
+            "node": "Sheets: leer SPREAD",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Sheets: leer SPREAD": {
+      "main": [
+        [
+          {
+            "node": "¿Hay que actualizar?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "¿Hay que actualizar?": {
+      "main": [
+        [
+          {
+            "node": "Si",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Si": {
+      "main": [
+        [
+          {
+            "node": "Sheets: escribir usura del mes",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "America/Bogota"
+  }
+}

@@ -217,7 +217,8 @@ td input{padding:5px 7px;font-size:12.5px}
             <div><label for="c_anticipo_max">Anticipo máximo aprobado</label><input type="text" id="c_anticipo_max" readonly placeholder="—">
               <p class="pv_ayuda">Tope aprobado por Riesgo. No editable.</p></div>
             <div><label for="c_fondeo">Tipo de fondeo</label>
-              <select id="c_fondeo"><option value="crowd">Crowd</option><option value="propia">Posición propia</option><option value="estructurado">Fondeador estructurado</option></select></div>
+              <select id="c_fondeo"><option value="crowd">Crowd</option><option value="propia" disabled>Posición propia (fase posterior)</option><option value="estructurado" disabled>Fondeador estructurado (fase posterior)</option></select>
+              <p class="pv_ayuda">Fase inicial: solo crowdfunding (sesión con cliente real, 23-nov-2026).</p></div>
           </div>
           <div class="pv_rejilla" style="margin-top:12px">
             <div id="w_tasa_inv"><label for="c_tasa_inv">Tasa Máxima al Inversionista (Rentabilidad máxima, E.A. %)</label><input type="text" inputmode="decimal" id="c_tasa_inv" placeholder="Ej: 14">
@@ -238,6 +239,10 @@ td input{padding:5px 7px;font-size:12.5px}
             <div><label for="c_tasa_cliente_mv">Tasa Máxima Final al cliente (Tasa M.V. anticipo)</label><input type="text" id="c_tasa_cliente_mv" readonly placeholder="—">
               <p class="pv_ayuda">De la operación que se ve en la Liquidación.</p></div>
             <div><label for="c_tasa_cliente_ea">Tasa E.A. anticipo (Tasa cliente E.A. sobre el anticipo)</label><input type="text" id="c_tasa_cliente_ea" readonly placeholder="—"></div>
+            <div><label for="c_usura">Tasa de usura del mes (tope Plataform)</label><input type="text" id="c_usura" readonly placeholder="—">
+              <p class="pv_ayuda">Se actualiza sola del 1 al 5 de cada mes (Superfinanciera → hoja SPREAD). Tope Plataform = usura − 0,05.</p></div>
+            <div><label for="c_spread">Spread rent. solo mora</label><input type="text" id="c_spread" readonly placeholder="—">
+              <p class="pv_ayuda">Tasa mora = rentabilidad máxima + 4. Spread = (tope − tasa mora) ÷ tasa mora, como la columna F del archivo SPREAD.</p></div>
             <div><label for="c_fee_periodo">Fee del negocio (% Fee del período)</label><input type="text" inputmode="decimal" id="c_fee_periodo">
               <p class="pv_ayuda"><span id="c_fee_auto_txt">Automático: "% FEE" (H20) de la calculadora comercial.</span> Editable según la matriz de fee; si lo cambias, se recalcula la tasa máxima y se avisa en la nota de HubSpot. <button type="button" class="pv_boton_texto" id="b_fee_auto" style="display:none">Volver al automático</button></p></div>
           </div>
@@ -299,6 +304,10 @@ var LISTAR_PAGADORES_WEBHOOK_URL = "https://webhooks.n8n.plataform.com/webhook/L
 var LISTAR_FACTURAS_WEBHOOK_URL  = "https://webhooks.n8n.plataform.com/webhook/Listar_facturas";
 var RADICAR_WEBHOOK_URL          = "https://webhooks.n8n.plataform.com/webhook/Radicar_negocio";
 var CARPETA_WEBHOOK_URL          = "https://webhooks.n8n.plataform.com/webhook/Crear_carpeta_radicacion";
+// Tasa de usura del mes (hoja SPREAD, actualizada por n8n del 1 al 5 de cada mes desde Superfinanciera).
+var USURA_WEBHOOK_URL            = "https://webhooks.n8n.plataform.com/webhook/Tasa_usura";
+var usuraMes = null;              // { mes: "AAAA-MM", usuraEA: 28.34, topeEA: 28.29 } o null si no se pudo leer
+var usuraError = "";
 var MAX_PAGADORES = 10;
 // Consulta por partes: el balanceador de Google delante de n8n corta a los 30 s. Si BigQuery tarda más,
 // n8n responde {pendiente, jobId, location} y el panel vuelve a preguntar hasta tener el resultado.
@@ -906,6 +915,13 @@ function calcularAvisos(plazo, soloIo){
   if(plazo.fechaInvalida){ avisos.push(["mal","La fecha de pago debe ser posterior a la fecha de desembolso."]); }
   if(dias < 30){ avisos.push(["mal","El plazo debe ser de al menos 30 días."]); }
   if(tipoFondeo !== "propia" && !(num("c_tasa_inv") > 0)){ avisos.push(["mal","Falta la tasa del inversionista (E.A.)."]); }
+  if(tipoFondeo !== "crowd"){ avisos.push(["mal","En esta fase solo se radica con fondeo Crowd."]); }
+  // Siempre debe haber tasa de usura del mes (Jenny, 23-nov-2026): sin ella no se radica.
+  if(!usuraVigente()){
+    avisos.push(["mal","No hay tasa de usura vigente para " + mesActual() + (usuraMes ? " (la hoja SPREAD tiene " + usuraMes.mes + ")" : usuraError ? " (" + usuraError + ")" : "") + ". No se puede radicar hasta que se actualice."]);
+  } else if(num("c_tasa_inv") > 0 && tasaMora(num("c_tasa_inv")) > usuraMes.topeEA){
+    avisos.push(["mal","La tasa mora (" + tasaMora(num("c_tasa_inv")) + "% = rentabilidad máxima + 4) supera el tope de usura Plataform (" + usuraMes.topeEA + "%)."]);
+  }
   if(fee30Pct !== null && !(fee30Pct > 0)){ avisos.push(["mal","El Fee Plataform (cada 30 días) debe ser mayor a 0%."]); }
   else if(fee30EsManual()){ avisos.push(["avi","Fee Plataform ajustado: " + (feeBase30()*100).toLocaleString("es-CO",{minimumFractionDigits:3,maximumFractionDigits:3}) + "% cada 30 días (por defecto 0,530%). Se avisa en la nota de HubSpot."]); }
   if(feeManualPct !== null && !(feeManualPct > 0)){ avisos.push(["mal","El % Fee del período debe ser mayor a 0%."]); }
@@ -957,6 +973,10 @@ function calcularAvisos(plazo, soloIo){
     if(!operacion.nit){ avisos.push(["mal", etiqueta + ": elige el pagador."]); return; }
     var total = operacion.facturas.reduce(function(a,f){ return a + (Number(f.valor)||0); },0);
     if(!operacion.facturas.length){ avisos.push(["mal", etiqueta + ": selecciona al menos una factura."]); }
+    else if(usuraVigente()){
+      var lq = liquidar(operacion, io, plazo);
+      if(lq.tasaClienteEA * 100 > usuraMes.topeEA + 1e-9){ avisos.push(["mal", etiqueta + ": la tasa cliente " + pct(lq.tasaClienteEA) + " E.A. supera el tope de usura Plataform (" + usuraMes.topeEA.toLocaleString("es-CO") + "%)."]); }
+    }
     if(!hayDato(operacion.cupoDisponible)){ avisos.push(["na", etiqueta + ": cupo del pagador sin dato en el mapeo, no se valida."]); }
     else if(total > operacion.cupoDisponible){ avisos.push(["mal", etiqueta + ": supera el cupo disponible del pagador en " + pesos(total - operacion.cupoDisponible) + "."]); }
     else{ avisos.push(["ok", etiqueta + ": dentro del cupo del pagador (quedan " + pesos(operacion.cupoDisponible - total) + ")."]); }
@@ -1050,8 +1070,39 @@ function feeEsManual(dias){ return feeManualPct !== null && Math.abs(feeAplicado
 function feeEAAplicado(dias){ return (dias > 0 && feeEsManual(dias)) ? Math.pow(1 + feeAplicado(dias), 365 / dias) - 1 : feeEABase(); }
 function tasaMaximaFinalCliente(dias){ return Math.round(((1 + tasaMaximaInversionista()/100) * (1 + feeEAAplicado(dias)) - 1) * 10000) / 100; }
 
+/* ==================================================================
+   Tasa de usura y spread solo mora (archivo SPREAD de Operaciones, sesión 23-nov-2026)
+   ================================================================== */
+function mesActual(){ var d = new Date(); return d.getFullYear() + "-" + String(d.getMonth()+1).padStart(2,"0"); }
+function usuraVigente(){ return !!(usuraMes && usuraMes.mes === mesActual() && usuraMes.topeEA > 0); }
+// Tasa mora = rentabilidad máxima + 4 puntos (política Plataform).
+function tasaMora(ti){ return Math.round((ti + 4) * 100) / 100; }
+// Spread solo mora = (tope − tasa mora) / tasa mora, redondeado a múltiplos de 0,0005 (igual que el archivo SPREAD).
+// Se devuelve como la columna F: en porcentaje, 2 decimales, sin el signo (ej. 41.45).
+function spreadSoloMora(ti, tope){
+  var m = tasaMora(ti);
+  if(!(m > 0) || !(tope > 0)){ return null; }
+  var r = Math.round(((tope - m) / m) * 2000 + 1e-9) / 2000;
+  return Math.round(r * 10000) / 100;
+}
+function cargarUsura(){
+  return postJson(USURA_WEBHOOK_URL).then(function(d){
+    var u = Number(d && d.usuraEA), t = Number(d && d.topeEA);
+    usuraMes = (d && d.mes && u > 0) ? { mes: String(d.mes), usuraEA: u, topeEA: t > 0 ? t : Math.round((u - 0.05) * 100) / 100 } : null;
+    usuraError = usuraMes ? "" : "la hoja SPREAD no trae la tasa de usura";
+  }).catch(function(err){
+    usuraMes = null;
+    usuraError = "no se pudo leer la tasa de usura (" + (err && err.message ? err.message : "revisa el flujo Tasa_usura en n8n") + ")";
+  }).then(function(){ recalcular(false); });
+}
+
 function recalcular(repintar){
   var plazo = resolverPlazo();
+  $("c_usura").value = usuraMes ? usuraMes.usuraEA.toLocaleString("es-CO",{minimumFractionDigits:2,maximumFractionDigits:2}) + "% (tope " +
+    usuraMes.topeEA.toLocaleString("es-CO",{minimumFractionDigits:2,maximumFractionDigits:2}) + "%) · " + usuraMes.mes : (usuraError ? "Sin dato: " + usuraError : "Consultando…");
+  $("c_usura").classList.toggle("pv_alerta", !usuraVigente() && (!!usuraError || !!usuraMes));
+  var sp = usuraVigente() && val("c_fondeo") !== "propia" && num("c_tasa_inv") > 0 ? spreadSoloMora(num("c_tasa_inv"), usuraMes.topeEA) : null;
+  $("c_spread").value = sp === null ? "" : sp.toFixed(2) + "  (tasa mora " + tasaMora(num("c_tasa_inv")).toLocaleString("es-CO") + "%)";
   $("c_tasa_max_inv").value = tasaMaximaInversionista().toLocaleString("es-CO",{minimumFractionDigits:2,maximumFractionDigits:2}) + "% E.A.";
   $("c_tasa_max_cliente").value = tasaMaximaFinalCliente(plazo.dias).toLocaleString("es-CO",{minimumFractionDigits:2,maximumFractionDigits:2}) + "% E.A.";
   var feeAuto = feePeriodo(plazo.dias);
@@ -1130,6 +1181,12 @@ function condicionesActuales(plazo){
     // Máxima inversionista = tasa inversionista; máxima final = (1+inv)(1+fee)−1 (Tasa Total, calculadora de Karen).
     tasaMaximaInversionistaEA: tasaMaximaInversionista(),
     tasaMaximaFinalClienteEA: tasaMaximaFinalCliente(plazo.dias),
+    // Usura del mes y spread solo mora (archivo SPREAD), para la nota de HubSpot.
+    mesUsura: usuraMes ? usuraMes.mes : null,
+    usuraEA: usuraMes ? usuraMes.usuraEA : null,
+    topeUsuraEA: usuraMes ? usuraMes.topeEA : null,
+    tasaMoraEA: val("c_fondeo") === "propia" ? null : tasaMora(num("c_tasa_inv")),
+    spreadSoloMora: usuraVigente() && val("c_fondeo") !== "propia" ? spreadSoloMora(num("c_tasa_inv"), usuraMes.topeEA) : null,
     feeAplicadoEA: Math.round(feeEAAplicado(plazo.dias) * 100 * 1000) / 1000,
     feePeriodoPct: Math.round(feeAplicado(plazo.dias) * 100 * 1000) / 1000,
     feePeriodoAutomaticoPct: Math.round(feePeriodo(plazo.dias) * 100 * 1000) / 1000,
@@ -1398,7 +1455,7 @@ function crearCarpetaYCotizacion(plazo, negocios){
         return { ok: false, mensaje: "No se creó la carpeta en Drive" + (r.status === 404 ? " (el flujo Crear_carpeta_radicacion no está activo en n8n)" : (d.message ? ": " + d.message : " (respuesta " + r.status + ")")) };
       }
       var subs = Array.isArray(d.subcarpetas) ? d.subcarpetas : [];
-      return { ok: true, url: d.carpeta.url, mensaje: "Carpeta creada en PROCESAMIENTO COMERCIAL: " + d.carpeta.nombre +
+      return { ok: true, url: d.carpeta.url, nombre: d.carpeta.nombre, mensaje: "Carpeta creada en PROCESAMIENTO COMERCIAL: " + d.carpeta.nombre +
         (subs.length ? " con " + subs.length + " subcarpetas de pagador" : "") +
         (Array.isArray(d.errores) && d.errores.length ? ". Revisar: " + d.errores.join(" · ") : "") };
     })
@@ -1431,24 +1488,34 @@ $("b_confirmar").addEventListener("click", function(){
   boton.disabled = true;
   boton.textContent = "Enviando…";
   caja.className = "pv_aviso";
-  caja.textContent = "Creando el negocio en HubSpot…";
+  caja.textContent = "Creando la carpeta del cliente y la cotización…";
   var plazoRadicado = resolverPlazo();
+  var payload = construir_payload();
+  var carpetaRes = null;
 
-  fetch(RADICAR_WEBHOOK_URL, { method: "POST", headers: {"Content-Type":"application/json"}, body: JSON.stringify(construir_payload()) })
+  // Sesión 23-nov-2026: primero la carpeta, para que la nota de HubSpot lleve su enlace.
+  crearCarpetaYCotizacion(plazoRadicado, [])
+    .then(function(res){
+      carpetaRes = res;
+      payload.carpeta = res.ok ? { url: res.url, nombre: res.nombre || "" } : { url: "", error: res.mensaje };
+      caja.textContent = "Creando el negocio en HubSpot…";
+      return fetch(RADICAR_WEBHOOK_URL, { method: "POST", headers: {"Content-Type":"application/json"}, body: JSON.stringify(payload) });
+    })
     .then(function(resp){ return resp.text().then(function(text){ return { ok:resp.ok, status:resp.status, text:text }; }); })
     .then(function(r){
       var data = null;
       try{ data = JSON.parse(r.text); }catch(err){}
+      var sobreCarpeta = carpetaRes ? " " + carpetaRes.mensaje + ". " + carpetaRes.pdf : "";
       if(!r.ok){
         caja.className = "pv_aviso pv_aviso_error";
-        caja.textContent = "n8n respondió con error (" + r.status + "). " + (data && data.message ? data.message : r.text.slice(0,200));
+        caja.textContent = "n8n respondió con error (" + r.status + "). " + (data && data.message ? data.message : r.text.slice(0,200)) + sobreCarpeta;
         return;
       }
       var negocios = (data && Array.isArray(data.negocios)) ? data.negocios : [];
       if(!negocios.length){
         caja.className = "pv_aviso pv_aviso_error";
         caja.textContent = (data && data.message ? data.message : "n8n recibió la radicación pero no confirmó ningún negocio creado en HubSpot. Revisa la ejecución del workflow Radicar_negocio en n8n.") +
-          ((data && Array.isArray(data.avisos) && data.avisos.length) ? " · " + data.avisos.join(" · ") : "");
+          ((data && Array.isArray(data.avisos) && data.avisos.length) ? " · " + data.avisos.join(" · ") : "") + sobreCarpeta;
         return;
       }
       var resumen = "Negocio creado en HubSpot: " +
@@ -1458,16 +1525,13 @@ $("b_confirmar").addEventListener("click", function(){
       var sheetOk = data.sheetRegistrado !== false;
       resumen += sheetOk ? ". Registrado en el Sheet \"Creados N8N\"." :
         ". OJO: no se pudo registrar la fila en el Sheet \"Creados N8N\"" + (data.sheetError ? " (" + data.sheetError + ")" : "") + ".";
-      caja.className = "pv_aviso";
-      caja.textContent = resumen + " Creando la carpeta del cliente y la cotización…";
-      return crearCarpetaYCotizacion(plazoRadicado, negocios).then(function(res){
-        caja.className = "pv_aviso " + (sheetOk && res.ok ? "pv_aviso_ok" : "pv_aviso_error");
-        caja.textContent = resumen + " " + res.mensaje + ". " + res.pdf;
-        if(res.ok && res.url){
-          var a = document.createElement("a"); a.href = res.url; a.target = "_blank"; a.rel = "noopener"; a.textContent = " Abrir carpeta";
-          caja.appendChild(a);
-        }
-      });
+      var res = carpetaRes || { ok: false, mensaje: "", pdf: "" };
+      caja.className = "pv_aviso " + (sheetOk && res.ok ? "pv_aviso_ok" : "pv_aviso_error");
+      caja.textContent = resumen + " " + res.mensaje + ". " + res.pdf + (res.ok ? " El enlace de la carpeta quedó en la nota de HubSpot." : "");
+      if(res.ok && res.url){
+        var a = document.createElement("a"); a.href = res.url; a.target = "_blank"; a.rel = "noopener"; a.textContent = " Abrir carpeta";
+        caja.appendChild(a);
+      }
     })
     .catch(function(){
       caja.className = "pv_aviso pv_aviso_error";
@@ -1559,6 +1623,7 @@ $("c_fecha_pago").value = isoLocal(addDays(hoy, 60));
 $("c_fee").value = (PARAMS.feeBase30 * 100).toFixed(3);
 aplicarTipoFondeo();
 recalcular(true);
+cargarUsura();
 </script>
 </body>
 </html>

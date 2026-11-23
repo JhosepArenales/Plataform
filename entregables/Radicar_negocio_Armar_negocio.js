@@ -187,6 +187,9 @@ const tablaFacturas = (o, k) => {
       dinero(f.valorNetoCalculado)
     ].map(td).join('') + '</tr>').join('') + '</table>';
 };
+// La carpeta se crea antes que el negocio; su enlace llega en el cuerpo del webhook.
+let carpeta = {};
+try { carpeta = ($('Webhook: radicar negocio').first().json.body || {}).carpeta || n.carpeta || {}; } catch (e) { carpeta = n.carpeta || {}; }
 const bloques = ops.map((o, i) => {
   const k = condOp(o), l = o.liquidacion || {};
   const inv = aNum(k.tasaMaximaInversionistaEA != null ? k.tasaMaximaInversionistaEA : k.tasaInversionistaEA);
@@ -198,13 +201,20 @@ const bloques = ops.map((o, i) => {
     '<br>Tasa Máxima al Inversionista (Rentabilidad máxima): ' + pctTxt(inv, null) +
     '<br>Tasa Máxima Final al cliente (Tasa M.V. anticipo): ' + pctTxt(aNum(l.nominalMensual) * 100, 2) +
     '<br>Efectivo anual (Fee Plataform E.A.): ' + pctTxt(fee, 3) +
+    // Sesión con cliente real (23-nov-2026): anticipo, tasa mora y spread solo mora (archivo SPREAD).
+    '<br>% Anticipo: ' + pctTxt(aNum(k.anticipoPct), null) +
+    '<br>Tasa mora (rentabilidad máxima + 4): ' + pctTxt(aNum(k.tasaMoraEA), null) +
+    '<br>% Spread rent. solo mora: ' + (isFinite(aNum(k.spreadSoloMora)) ? aNum(k.spreadSoloMora).toFixed(2) : 'sin dato') +
+      (isFinite(aNum(k.usuraEA)) ? ' (usura ' + esc(k.mesUsura || '') + ': ' + pctTxt(aNum(k.usuraEA), 2) + ', tope Plataform ' + pctTxt(aNum(k.topeUsuraEA), 2) + ')' : '') +
     (subioFee(k) ? '<br><strong>AUMENTO DE FEE</strong>' : '') + '</p>' +
     tablaFacturas(o, k);
 });
 const pagadores = ops.map(o => o.razonSocialPagador || 'NIT ' + o.nitPagador).join(', ');
 const notaHtml = '<p>@' + r.config.MENCIONAR + ' cliente listo para operar. Resumen para tu validación y aprobación.</p>' +
   '<p>Cliente: ' + esc(n.nombreEmisor) + ' (NIT ' + n.nitEmisor + ')<br>Valor (monto del negocio) total: ' + pesos(total) +
-  '<br>Radicado por: ' + esc(nombreComercial || 'sin nombre') + ' desde el panel comercial.</p>' +
+  '<br>Radicado por: ' + esc(nombreComercial || 'sin nombre') + ' desde el panel comercial.' +
+  // Sesión con cliente real (23-nov-2026): enlace de la carpeta de la operación (mapeo, cotización, carta de endoso).
+  '<br>Carpeta de la operación: ' + (carpeta.url ? '<a href="' + esc(carpeta.url) + '">' + esc(carpeta.nombre || carpeta.url) + '</a>' : 'no se creó' + (carpeta.error ? ' (' + esc(carpeta.error) + ')' : '')) + '</p>' +
   bloques.join('');
 
 return [{ json: { body: { properties, associations }, dealName, pagadores, notaHtml,

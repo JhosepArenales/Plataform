@@ -1,0 +1,112 @@
+{
+  "name": "Tasa de usura del mes (radicador)",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "Tasa_usura",
+        "responseMode": "responseNode",
+        "options": {
+          "allowedOrigins": "*"
+        }
+      },
+      "name": "Webhook: tasa de usura",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        0
+      ],
+      "webhookId": "tasa-usura"
+    },
+    {
+      "parameters": {
+        "url": "https://sheets.googleapis.com/v4/spreadsheets/1hNZgqrJPhIEcKd4RaJh0VMlpia-N2ns0XVLmQPiXIG8/values/'Hoja%201'!A1%3AC2",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleSheetsOAuth2Api",
+        "options": {}
+      },
+      "name": "Sheets: leer SPREAD",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        240,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Lee la hoja SPREAD (B1 = \"noviembre 2026\", B2 = tasa de usura). El tope Plataform = usura - 0,05 (política interna).\nconst v = ($input.first().json.values || []);\nconst MESES = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];\nconst textoMes = String((v[0] || [])[1] || '').trim().toLowerCase();\nconst m = textoMes.match(/([a-záéíóú]+)\\s+(\\d{4})/);\nconst idx = m ? MESES.indexOf(m[1]) : -1;\nconst mes = idx >= 0 ? m[2] + '-' + String(idx + 1).padStart(2, '0') : null;\nconst num = t => { const s = String(t == null ? '' : t).replace('%', '').trim().replace(',', '.'); const n = parseFloat(s); return isFinite(n) ? n : null; };\nconst usura = num((v[1] || [])[1]);\nreturn [{ json: {\n  mes, usuraEA: usura, topeEA: usura == null ? null : Math.round((usura - 0.05) * 100) / 100,\n  textoMes, fuente: 'Hoja SPREAD (1hNZgqrJPhIEcKd4RaJh0VMlpia-N2ns0XVLmQPiXIG8)'\n} }];"
+      },
+      "name": "Armar respuesta",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        480,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json }}",
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Access-Control-Allow-Origin",
+                "value": "*"
+              }
+            ]
+          }
+        }
+      },
+      "name": "Responder al panel",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        720,
+        0
+      ]
+    }
+  ],
+  "connections": {
+    "Webhook: tasa de usura": {
+      "main": [
+        [
+          {
+            "node": "Sheets: leer SPREAD",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Sheets: leer SPREAD": {
+      "main": [
+        [
+          {
+            "node": "Armar respuesta",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Armar respuesta": {
+      "main": [
+        [
+          {
+            "node": "Responder al panel",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "America/Bogota"
+  }
+}

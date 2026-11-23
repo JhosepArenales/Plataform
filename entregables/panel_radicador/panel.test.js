@@ -40,9 +40,12 @@ function cargarPanel() {
   const localStorage = { getItem() { return null; }, setItem() {} };
   const fetch = () => Promise.reject(new Error('sin red en pruebas'));
   const fn = new Function('document', 'localStorage', 'fetch',
-    script + '\n;return { setFeeManual: function(v){ feeManualPct = v; }, setOperaciones: function(o){ operaciones = o; }, datosCotizacion, construirCotizacionPDF, crearCarpetaYCotizacion, setFetch: function(f){ fetch = f; }, setEmisorRiesgo: function(e){ emisorRiesgo = e; }, pintar_validaciones, setFee30: function(v){ fee30Pct = v; }, feeEAAplicado, pintar_liquidacion, postBigQuery, resolverPlazo, construir_payload, activarOperacion, leerCondiciones, todasGuardadas, getVista: function(){ return operacion_vista; }, getOperaciones: function(){ return operaciones; }, listarPagadores, getPagadores: function(){ return pagadoresDisponibles; }, setToken: function(v){ consultaEmisorToken = v; }, setEsperaBQ: function(v){ ESPERA_BQ_MS = v; }, PdfSimple, mapeoFacturasCSV, esSi, CARPETA_WEBHOOK_URL, feeAplicado, feeEsManual, liquidar, feePeriodo, tasaMaximaFinalCliente, tasaMaximaInversionista, PARAMS, ' +
+    script + '\n;return { setUsura: function(u){ usuraMes = u; usuraError = u ? "" : "sin dato"; }, spreadSoloMora, tasaMora, mesActual, setFeeManual: function(v){ feeManualPct = v; }, setOperaciones: function(o){ operaciones = o; }, datosCotizacion, construirCotizacionPDF, crearCarpetaYCotizacion, setFetch: function(f){ fetch = f; }, setEmisorRiesgo: function(e){ emisorRiesgo = e; }, pintar_validaciones, setFee30: function(v){ fee30Pct = v; }, feeEAAplicado, pintar_liquidacion, postBigQuery, resolverPlazo, construir_payload, activarOperacion, leerCondiciones, todasGuardadas, getVista: function(){ return operacion_vista; }, getOperaciones: function(){ return operaciones; }, listarPagadores, getPagadores: function(){ return pagadoresDisponibles; }, setToken: function(v){ consultaEmisorToken = v; }, setEsperaBQ: function(v){ ESPERA_BQ_MS = v; }, PdfSimple, mapeoFacturasCSV, esSi, CARPETA_WEBHOOK_URL, feeAplicado, feeEsManual, liquidar, feePeriodo, tasaMaximaFinalCliente, tasaMaximaInversionista, PARAMS, ' +
     'CUPO_WEBHOOK_URL, LISTAR_PAGADORES_WEBHOOK_URL, LISTAR_FACTURAS_WEBHOOK_URL, RADICAR_WEBHOOK_URL, MAX_PAGADORES };');
-  return { api: fn(document, localStorage, fetch), els };
+  const api = fn(document, localStorage, fetch);
+  // Por defecto hay usura vigente del mes (noviembre 2026: 28,34 %, tope 28,29 %); las pruebas de usura la quitan.
+  api.setUsura({ mes: api.mesActual(), usuraEA: 28.34, topeEA: 28.29 });
+  return { api, els };
 }
 
 test('el panel carga sin errores', () => {
@@ -307,7 +310,7 @@ test('bloqueo por mora suspendido para pruebas: la mora se avisa en amarillo y n
   const { api, els } = cargarPanel();
   els.c_tasa_inv.value = '15';
   api.setEmisorRiesgo({ diasMora: 4, anticipoPactado: 95, plazoPactado: 90, cupoDisponible: 874801824 });
-  api.setOperaciones([{ nit: '1', razon_social: 'HARINERA DEL VALLE S.A.', diasMora: 3, cupoDisponible: 5000000000, facturas: [{ valor: 4192697 }] }]);
+  api.setOperaciones([{ nit: '1', razon_social: 'HARINERA DEL VALLE S.A.', diasMora: 3, cupoDisponible: 5000000000, facturas: [{ valor: 50000000 }] }]);  // monto real para que la tasa cliente quede bajo el tope de usura
   const bloqueos = api.pintar_validaciones({ dias: 56, diasPTG: 56, fechaInvalida: false });
   const html = els.caja_validaciones.innerHTML;
   assert.equal(bloqueos, 0, 'la mora no debe bloquear mientras la regla esté suspendida');
@@ -320,7 +323,7 @@ test('retenciones: la base propone pero se pueden cambiar, y el cambio queda com
   const { api, els } = cargarPanel();
   els.c_tasa_inv.value = '15';
   api.setEmisorRiesgo({ diasMora: 0, anticipoPactado: 95, plazoPactado: 90, cupoDisponible: 1e10, retenciones: { reteFuente: false, reteIca: false, reteIva: false } });
-  api.setOperaciones([{ nit: '1', razon_social: 'P', cupoDisponible: 1e10, facturas: [{ valor: 1000000 }] }]);
+  api.setOperaciones([{ nit: '1', razon_social: 'P', cupoDisponible: 1e10, facturas: [{ valor: 50000000 }] }]);
   els.c_rf.checked = true;
   const bloqueos = api.pintar_validaciones({ dias: 56, diasPTG: 56, fechaInvalida: false });
   assert.equal(bloqueos, 0);
@@ -521,7 +524,7 @@ test('certificado vencido bloquea la radicación; vigente pasa; sin dato no se v
   const hoy = new Date();
   const ayer = new Date(hoy.getFullYear(), hoy.getMonth(), hoy.getDate() - 1);
   const base = { diasMora: 0, anticipoPactado: 95, plazoPactado: 120, cupoDisponible: 1e12 };
-  api.setOperaciones([{ nit: '1', razon_social: 'P', cupoDisponible: 1e12, facturas: [{ valor: 1000000 }] }]);
+  api.setOperaciones([{ nit: '1', razon_social: 'P', cupoDisponible: 1e12, facturas: [{ valor: 50000000 }] }]);
   const plazo = { dias: 60, diasPTG: 60, fechaInvalida: false };
 
   api.setEmisorRiesgo({ ...base, fechaVencimientoCertificado: iso(ayer) });
@@ -562,8 +565,45 @@ test('cada factura del payload lleva forma de pago, descuento, valor neto calcul
   assert.equal(f[1].valorNetoCalculado, null);
 });
 
+test('spread solo mora = (tope − (TI + 4)) / (TI + 4) redondeado a 0,0005: cuadra con las 22 filas del archivo SPREAD (nov-2026)', () => {
+  const { api } = cargarPanel();
+  const tabla = [[13,66.40],[14,57.15],[15,48.90],[15.3,46.60],[15.5,45.10],[15.6,44.35],[15.7,43.60],[16,41.45],[16.2,40.05],[16.3,39.35],
+    [16.4,38.70],[16.5,38.00],[16.6,37.35],[16.7,36.65],[17,34.70],[17.2,33.45],[17.5,31.60],[17.6,30.95],[18,28.60],[19,23.00],[20,17.90]];
+  for (const [ti, f] of tabla) assert.equal(api.spreadSoloMora(ti, 28.29), f, 'TI ' + ti);
+  assert.equal(api.tasaMora(16.2), 20.2);
+});
+
+test('sin tasa de usura del mes no se puede radicar; con usura, la tasa cliente no puede superar el tope', () => {
+  const { api, els } = cargarPanel();
+  els.c_tasa_inv.value = '16';
+  api.setEmisorRiesgo({ diasMora: 0, anticipoPactado: 95, plazoPactado: 120, cupoDisponible: 1e12 });
+  api.setOperaciones([{ nit: '1', razon_social: 'P', cupoDisponible: 1e12, facturas: [{ valor: 50000000 }] }]);
+  const plazo = { dias: 60, diasPTG: 60, fechaInvalida: false };
+  assert.equal(api.pintar_validaciones(plazo), 0, 'con usura vigente y tasa normal pasa');
+  api.setUsura(null);
+  assert.equal(api.pintar_validaciones(plazo), 1);
+  assert.ok(els.caja_validaciones.innerHTML.includes('No hay tasa de usura vigente'));
+  api.setUsura({ mes: '2026-01', usuraEA: 25, topeEA: 24.95 });
+  assert.equal(api.pintar_validaciones(plazo), 1, 'usura de otro mes no sirve');
+  api.setUsura({ mes: api.mesActual(), usuraEA: 10, topeEA: 9.95 });
+  assert.ok(api.pintar_validaciones(plazo) >= 1, 'tasa cliente o tasa mora por encima del tope bloquea');
+  assert.ok(els.caja_validaciones.innerHTML.includes('supera el tope de usura Plataform'));
+});
+
+test('fase inicial solo crowd y el payload lleva la carpeta, la usura y el spread', () => {
+  const html = leerHtml();
+  assert.ok(html.includes('<option value="propia" disabled>') && html.includes('<option value="estructurado" disabled>'));
+  assert.ok(html.indexOf('crearCarpetaYCotizacion(plazoRadicado, [])') < html.indexOf('fetch(RADICAR_WEBHOOK_URL'), 'la carpeta se crea antes del negocio');
+  assert.ok(html.includes('payload.carpeta = res.ok ? { url: res.url'));
+  const { api, els } = cargarPanel();
+  els.c_tasa_inv.value = '16';
+  api.setOperaciones([{ nit: '1', razon_social: 'A', facturas: [{ folio: 'F1', valor: 1000 }] }]);
+  const c = api.construir_payload().condiciones;
+  assert.equal(c.usuraEA, 28.34); assert.equal(c.topeUsuraEA, 28.29); assert.equal(c.tasaMoraEA, 20); assert.equal(c.spreadSoloMora, 41.45);
+});
+
 test('index.html llegó idéntico al probado (huella SHA-256)', () => {
   const contenido = leerHtml().replace(/\r\n/g, '\n').replace(/\s+$/, '');
   const huella = require('node:crypto').createHash('sha256').update(contenido).digest('hex');
-  assert.equal(huella, '23c77070d2d9250d163816400aed58e33f5c0ee10b7796c8f42c5d94498e2b38');
+  assert.equal(huella, 'bb267a96ae5e743b7701cbfba75fe7647597b87fc824b63c9137bb3238a97a67');
 });
