@@ -201,9 +201,8 @@ const bloques = ops.map((o, i) => {
     '<br>Tasa Máxima al Inversionista (Rentabilidad máxima): ' + pctTxt(inv, null) +
     '<br>Tasa Máxima Final al cliente (Tasa M.V. anticipo): ' + pctTxt(aNum(l.nominalMensual) * 100, 2) +
     '<br>Efectivo anual (Fee Plataform E.A.): ' + pctTxt(fee, 3) +
-    // Sesión con cliente real (23-nov-2026): anticipo, tasa mora y spread solo mora (archivo SPREAD).
+    // Sesión con cliente real (23-nov-2026): anticipo y spread solo mora (archivo SPREAD).
     '<br>% Anticipo: ' + pctTxt(aNum(k.anticipoPct), null) +
-    '<br>Tasa mora (rentabilidad máxima + 4): ' + pctTxt(aNum(k.tasaMoraEA), null) +
     '<br>% Spread rent. solo mora: ' + (isFinite(aNum(k.spreadSoloMora)) ? aNum(k.spreadSoloMora).toFixed(2) : 'sin dato') +
       (isFinite(aNum(k.usuraEA)) ? ' (usura ' + esc(k.mesUsura || '') + ': ' + pctTxt(aNum(k.usuraEA), 2) + ', tope Plataform ' + pctTxt(aNum(k.topeUsuraEA), 2) + ')' : '') +
     (subioFee(k) ? '<br><strong>AUMENTO DE FEE</strong>' : '') + '</p>' +

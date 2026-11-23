@@ -586,7 +586,7 @@ test('sin tasa de usura del mes no se puede radicar; con usura, la tasa cliente 
   api.setUsura({ mes: '2026-01', usuraEA: 25, topeEA: 24.95 });
   assert.equal(api.pintar_validaciones(plazo), 1, 'usura de otro mes no sirve');
   api.setUsura({ mes: api.mesActual(), usuraEA: 10, topeEA: 9.95 });
-  assert.ok(api.pintar_validaciones(plazo) >= 1, 'tasa cliente o tasa mora por encima del tope bloquea');
+  assert.ok(api.pintar_validaciones(plazo) >= 1, 'tasa cliente por encima del tope bloquea');
   assert.ok(els.caja_validaciones.innerHTML.includes('supera el tope de usura Plataform'));
 });
 
@@ -599,11 +599,11 @@ test('fase inicial solo crowd y el payload lleva la carpeta, la usura y el sprea
   els.c_tasa_inv.value = '16';
   api.setOperaciones([{ nit: '1', razon_social: 'A', facturas: [{ folio: 'F1', valor: 1000 }] }]);
   const c = api.construir_payload().condiciones;
-  assert.equal(c.usuraEA, 28.34); assert.equal(c.topeUsuraEA, 28.29); assert.equal(c.tasaMoraEA, 20); assert.equal(c.spreadSoloMora, 41.45);
+  assert.equal(c.usuraEA, 28.34); assert.equal(c.topeUsuraEA, 28.29); assert.equal('tasaMoraEA' in c, false, 'la tasa mora no va a HubSpot (no la pidió Operaciones)'); assert.equal(c.spreadSoloMora, 41.45);
 });
 
 test('index.html llegó idéntico al probado (huella SHA-256)', () => {
   const contenido = leerHtml().replace(/\r\n/g, '\n').replace(/\s+$/, '');
   const huella = require('node:crypto').createHash('sha256').update(contenido).digest('hex');
-  assert.equal(huella, 'bb267a96ae5e743b7701cbfba75fe7647597b87fc824b63c9137bb3238a97a67');
+  assert.equal(huella, '36bd41dd66af39689cdf5c1784638f8a90ac55207bcc2a8e45f21ef0115951c7');
 });

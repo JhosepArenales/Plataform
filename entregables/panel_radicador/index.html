@@ -242,7 +242,7 @@ td input{padding:5px 7px;font-size:12.5px}
             <div><label for="c_usura">Tasa de usura del mes (tope Plataform)</label><input type="text" id="c_usura" readonly placeholder="—">
               <p class="pv_ayuda">Se actualiza sola del 1 al 5 de cada mes (Superfinanciera → hoja SPREAD). Tope Plataform = usura − 0,05.</p></div>
             <div><label for="c_spread">Spread rent. solo mora</label><input type="text" id="c_spread" readonly placeholder="—">
-              <p class="pv_ayuda">Tasa mora = rentabilidad máxima + 4. Spread = (tope − tasa mora) ÷ tasa mora, como la columna F del archivo SPREAD.</p></div>
+              <p class="pv_ayuda">Igual que la columna F del archivo SPREAD (hoja TASA MORA de Operaciones), con la usura del mes y la rentabilidad máxima.</p></div>
             <div><label for="c_fee_periodo">Fee del negocio (% Fee del período)</label><input type="text" inputmode="decimal" id="c_fee_periodo">
               <p class="pv_ayuda"><span id="c_fee_auto_txt">Automático: "% FEE" (H20) de la calculadora comercial.</span> Editable según la matriz de fee; si lo cambias, se recalcula la tasa máxima y se avisa en la nota de HubSpot. <button type="button" class="pv_boton_texto" id="b_fee_auto" style="display:none">Volver al automático</button></p></div>
           </div>
@@ -919,8 +919,6 @@ function calcularAvisos(plazo, soloIo){
   // Siempre debe haber tasa de usura del mes (Jenny, 23-nov-2026): sin ella no se radica.
   if(!usuraVigente()){
     avisos.push(["mal","No hay tasa de usura vigente para " + mesActual() + (usuraMes ? " (la hoja SPREAD tiene " + usuraMes.mes + ")" : usuraError ? " (" + usuraError + ")" : "") + ". No se puede radicar hasta que se actualice."]);
-  } else if(num("c_tasa_inv") > 0 && tasaMora(num("c_tasa_inv")) > usuraMes.topeEA){
-    avisos.push(["mal","La tasa mora (" + tasaMora(num("c_tasa_inv")) + "% = rentabilidad máxima + 4) supera el tope de usura Plataform (" + usuraMes.topeEA + "%)."]);
   }
   if(fee30Pct !== null && !(fee30Pct > 0)){ avisos.push(["mal","El Fee Plataform (cada 30 días) debe ser mayor a 0%."]); }
   else if(fee30EsManual()){ avisos.push(["avi","Fee Plataform ajustado: " + (feeBase30()*100).toLocaleString("es-CO",{minimumFractionDigits:3,maximumFractionDigits:3}) + "% cada 30 días (por defecto 0,530%). Se avisa en la nota de HubSpot."]); }
@@ -1075,7 +1073,7 @@ function tasaMaximaFinalCliente(dias){ return Math.round(((1 + tasaMaximaInversi
    ================================================================== */
 function mesActual(){ var d = new Date(); return d.getFullYear() + "-" + String(d.getMonth()+1).padStart(2,"0"); }
 function usuraVigente(){ return !!(usuraMes && usuraMes.mes === mesActual() && usuraMes.topeEA > 0); }
-// Tasa mora = rentabilidad máxima + 4 puntos (política Plataform).
+// Paso intermedio del archivo SPREAD (hoja TASA MORA): rentabilidad máxima + 4. Solo se usa para el spread; no se muestra ni bloquea.
 function tasaMora(ti){ return Math.round((ti + 4) * 100) / 100; }
 // Spread solo mora = (tope − tasa mora) / tasa mora, redondeado a múltiplos de 0,0005 (igual que el archivo SPREAD).
 // Se devuelve como la columna F: en porcentaje, 2 decimales, sin el signo (ej. 41.45).
@@ -1102,7 +1100,7 @@ function recalcular(repintar){
     usuraMes.topeEA.toLocaleString("es-CO",{minimumFractionDigits:2,maximumFractionDigits:2}) + "%) · " + usuraMes.mes : (usuraError ? "Sin dato: " + usuraError : "Consultando…");
   $("c_usura").classList.toggle("pv_alerta", !usuraVigente() && (!!usuraError || !!usuraMes));
   var sp = usuraVigente() && val("c_fondeo") !== "propia" && num("c_tasa_inv") > 0 ? spreadSoloMora(num("c_tasa_inv"), usuraMes.topeEA) : null;
-  $("c_spread").value = sp === null ? "" : sp.toFixed(2) + "  (tasa mora " + tasaMora(num("c_tasa_inv")).toLocaleString("es-CO") + "%)";
+  $("c_spread").value = sp === null ? "" : sp.toFixed(2);
   $("c_tasa_max_inv").value = tasaMaximaInversionista().toLocaleString("es-CO",{minimumFractionDigits:2,maximumFractionDigits:2}) + "% E.A.";
   $("c_tasa_max_cliente").value = tasaMaximaFinalCliente(plazo.dias).toLocaleString("es-CO",{minimumFractionDigits:2,maximumFractionDigits:2}) + "% E.A.";
   var feeAuto = feePeriodo(plazo.dias);
@@ -1185,7 +1183,6 @@ function condicionesActuales(plazo){
     mesUsura: usuraMes ? usuraMes.mes : null,
     usuraEA: usuraMes ? usuraMes.usuraEA : null,
     topeUsuraEA: usuraMes ? usuraMes.topeEA : null,
-    tasaMoraEA: val("c_fondeo") === "propia" ? null : tasaMora(num("c_tasa_inv")),
     spreadSoloMora: usuraVigente() && val("c_fondeo") !== "propia" ? spreadSoloMora(num("c_tasa_inv"), usuraMes.topeEA) : null,
     feeAplicadoEA: Math.round(feeEAAplicado(plazo.dias) * 100 * 1000) / 1000,
     feePeriodoPct: Math.round(feeAplicado(plazo.dias) * 100 * 1000) / 1000,
