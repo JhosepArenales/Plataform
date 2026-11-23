@@ -548,8 +548,22 @@ test('certificado vencido bloquea la radicación; vigente pasa; sin dato no se v
   assert.ok(leerHtml().includes('<label for="c_certificado">Vencimiento del certificado</label>'));
 });
 
+test('cada factura del payload lleva forma de pago, descuento, valor neto calculado y fecha aproximada de pago', () => {
+  const { api, els } = cargarPanel();
+  els.c_tasa_inv.value = '16';
+  api.setOperaciones([{ nit: '1', razon_social: 'A', facturas: [
+    { folio: 'F1', cufe: 'c1', vencimiento: '2026-12-30', valor: 900, formaPago: 'Crédito', descuento: '50', valorNetoCalculado: 900 },
+    { folio: 'F2', cufe: 'c2', vencimiento: '2026-12-31', valor: 100 } ] }]);
+  const f = api.construir_payload().operaciones[0].facturas;
+  const fechaOp = api.construir_payload().operaciones[0].condiciones.fechaPagoEfectiva;
+  assert.deepEqual(f[0], { folio: 'F1', cufe: 'c1', fechaVencimiento: '2026-12-30', valor: 900, fechaAproximadaPago: fechaOp, formaPago: 'Crédito', descuento: 50, valorNetoCalculado: 900 });
+  assert.equal(f[1].formaPago, null, 'si la consulta no lo trae queda null (no se inventa)');
+  assert.equal(f[1].descuento, null);
+  assert.equal(f[1].valorNetoCalculado, null);
+});
+
 test('index.html llegó idéntico al probado (huella SHA-256)', () => {
   const contenido = leerHtml().replace(/\r\n/g, '\n').replace(/\s+$/, '');
   const huella = require('node:crypto').createHash('sha256').update(contenido).digest('hex');
-  assert.equal(huella, '81a02c739cb210d261426886bc8e889b4ee24030e57938f064997f8167eb0277');
+  assert.equal(huella, '23c77070d2d9250d163816400aed58e33f5c0ee10b7796c8f42c5d94498e2b38');
 });

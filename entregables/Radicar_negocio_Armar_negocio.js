@@ -165,6 +165,28 @@ const subioFee = k => {
   const fp = aNum(k.feePeriodoPct), fa = aNum(k.feePeriodoAutomaticoPct), f30 = aNum(k.feePlataform30Pct);
   return (isFinite(fp) && isFinite(fa) && fp - fa > 1e-9) || (!!k.feePlataformAjustado && isFinite(f30) && f30 - 0.53 > 1e-9);
 };
+// Facturas de cada operación (pedido 23-nov-2026): mismas columnas del mapeo de Producto.
+// Lo que la consulta de facturas no trae sale como "sin dato" (no se inventa).
+const fechaTxt = v => { const t = String(v == null ? '' : v).trim(); const m = t.match(/^(\d{4})[-.\/](\d{1,2})[-.\/](\d{1,2})/);
+  return m ? m[3].padStart(2, '0') + '/' + m[2].padStart(2, '0') + '/' + m[1] : (t || 'sin dato'); };
+const dato = v => (v === null || v === undefined || v === '') ? 'sin dato' : esc(v);
+const dinero = v => (v === null || v === undefined || v === '' || !isFinite(Number(v))) ? 'sin dato' : pesos(v);
+const tablaFacturas = (o, k) => {
+  const fs = Array.isArray(o.facturas) ? o.facturas : [];
+  if (!fs.length) return '';
+  const th = t => '<th style="border:1px solid #ccc;padding:3px 6px;text-align:left">' + t + '</th>';
+  const td = t => '<td style="border:1px solid #ccc;padding:3px 6px">' + t + '</td>';
+  return '<table style="border-collapse:collapse;font-size:12px"><tr>' +
+    ['NUMERO FACTURA', 'FECHA VENCIMIENTO', 'FECHA APROXIMADA DE PAGO', 'FORMA PAGO', 'DESCUENTO', 'VALOR NETO CALCULADO'].map(th).join('') + '</tr>' +
+    fs.map(f => '<tr>' + [
+      dato(f.folio),
+      fechaTxt(f.fechaVencimiento),
+      fechaTxt(f.fechaAproximadaPago || k.fechaPagoEfectiva),
+      dato(f.formaPago),
+      dinero(f.descuento),
+      dinero(f.valorNetoCalculado)
+    ].map(td).join('') + '</tr>').join('') + '</table>';
+};
 const bloques = ops.map((o, i) => {
   const k = condOp(o), l = o.liquidacion || {};
   const inv = aNum(k.tasaMaximaInversionistaEA != null ? k.tasaMaximaInversionistaEA : k.tasaInversionistaEA);
@@ -176,7 +198,8 @@ const bloques = ops.map((o, i) => {
     '<br>Tasa Máxima al Inversionista (Rentabilidad máxima): ' + pctTxt(inv, null) +
     '<br>Tasa Máxima Final al cliente (Tasa M.V. anticipo): ' + pctTxt(aNum(l.nominalMensual) * 100, 2) +
     '<br>Efectivo anual (Fee Plataform E.A.): ' + pctTxt(fee, 3) +
-    (subioFee(k) ? '<br><strong>AUMENTO DE FEE</strong>' : '') + '</p>';
+    (subioFee(k) ? '<br><strong>AUMENTO DE FEE</strong>' : '') + '</p>' +
+    tablaFacturas(o, k);
 });
 const pagadores = ops.map(o => o.razonSocialPagador || 'NIT ' + o.nitPagador).join(', ');
 const notaHtml = '<p>@' + r.config.MENCIONAR + ' cliente listo para operar. Resumen para tu validación y aprobación.</p>' +

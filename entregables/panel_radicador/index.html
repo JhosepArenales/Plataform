@@ -1155,7 +1155,13 @@ function construir_payload(){
         confirmacionCorreo: op.confirmacionCorreo,
         mecanismoNegociacion: op.mecanismoNegociacion,
         pagoDirecto: op.pagoDirecto,
-        facturas: op.facturas.map(function(f){ return { folio: f.folio, cufe: f.cufe, fechaVencimiento: f.vencimiento, valor: Number(f.valor)||0 }; }),
+        // Por factura van también forma de pago, descuento, valor neto calculado y la fecha aproximada de pago de la
+        // operación, para la nota de HubSpot (pedido 23-nov-2026). null = la consulta de facturas no lo trajo.
+        facturas: op.facturas.map(function(f){ return { folio: f.folio, cufe: f.cufe, fechaVencimiento: f.vencimiento, valor: Number(f.valor)||0,
+          fechaAproximadaPago: isoLocal(plazo.pagoAjustado),
+          formaPago: hayDato(f.formaPago) ? f.formaPago : null,
+          descuento: hayDato(f.descuento) ? Number(f.descuento) : null,
+          valorNetoCalculado: hayDato(f.valorNetoCalculado) ? Number(f.valorNetoCalculado) : null }; }),
         liquidacion: {
           valorFacturas: l.valorFactura,
           numeroFacturas: l.cantFacturas,
