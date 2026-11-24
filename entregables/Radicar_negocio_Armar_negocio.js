@@ -198,11 +198,23 @@ const retTxt = r => {
     .map(([c, nom]) => nom + ' ' + pctTxt(aNum(r[c].tasaPct), null));
   return lista.length ? lista.join(', ') : 'ninguna';
 };
+// Tipo de operación: en esta fase todo factoring va por endoso (igual que "Tipo de factoring (Pagador #N)" = ENDOSO).
+const tipoOpTxt = /^factoring$/i.test(String(n.tipoOperacion || '').trim()) ? 'Factoring por endoso'
+  : (n.tipoOperacion ? esc(n.tipoOperacion) + ' (modalidad por definir)' : 'sin dato');
+// Si el comercial usó un anticipo menor al aprobado por Riesgo, queda escrito en la nota (Jenny, 24-nov-2026).
+const anticipoVsRiesgo = k => {
+  const a = aNum(k.anticipoPct), m = aNum(k.anticipoMaximoAprobado);
+  if (!isFinite(m)) return ' (aprobado por Riesgo: sin dato)';
+  return a < m - 1e-9 ? ' <strong>(menor al aprobado por Riesgo: ' + pctTxt(m, null) + ')</strong>' : ' (aprobado por Riesgo: ' + pctTxt(m, null) + ')';
+};
 const bloques = ops.map((o, i) => {
   const k = condOp(o), l = o.liquidacion || {};
   const inv = aNum(k.tasaMaximaInversionistaEA != null ? k.tasaMaximaInversionistaEA : k.tasaInversionistaEA);
   const fee = aNum(k.feeAplicadoEA != null ? k.feeAplicadoEA : k.feePlataformEA);
   return '<p><strong>Operación ' + (i + 1) + ': ' + esc(o.razonSocialPagador || 'NIT ' + o.nitPagador) + ' (NIT ' + esc(o.nitPagador) + ')</strong>' +
+    // Sesión con Jenny (24-nov-2026): tipo de operación en cada bloque y número de operación para actualizar a mano.
+    '<br>Tipo de operación: ' + tipoOpTxt +
+    '<br>N° de operación (plataforma): pendiente, se actualiza a mano cuando se cargue en la plataforma' +
     '<br>Valor (monto del negocio): ' + pesos(l.valorFacturas) +
     '<br>Plazo de la Op. en días (Plazo en días): ' + (isFinite(aNum(k.plazoDias)) ? k.plazoDias + ' días' : 'sin dato') +
     '<br>Fee del negocio (% Fee del período): ' + pctTxt(aNum(k.feePeriodoPct), 3) +
@@ -210,7 +222,7 @@ const bloques = ops.map((o, i) => {
     '<br>Tasa Máxima Final al cliente (Tasa M.V. anticipo): ' + pctTxt(aNum(l.nominalMensual) * 100, 2) +
     '<br>Efectivo anual (Fee Plataform E.A.): ' + pctTxt(fee, 3) +
     // Sesión con cliente real (23-nov-2026): anticipo y spread solo mora (archivo SPREAD).
-    '<br>% Anticipo: ' + pctTxt(aNum(k.anticipoPct), null) +
+    '<br>% Anticipo: ' + pctTxt(aNum(k.anticipoPct), null) + anticipoVsRiesgo(k) +
     // Pedido de Jenny (24-nov-2026): retenciones aplicadas en la operación.
     '<br>Retenciones: ' + retTxt(k.retenciones) + (isFinite(aNum(l.totalRetenciones)) ? ' · Total ' + pesos(l.totalRetenciones) : '') +
     '<br>% Spread rent. solo mora: ' + (isFinite(aNum(k.spreadSoloMora)) ? aNum(k.spreadSoloMora).toFixed(2) : 'sin dato') +
