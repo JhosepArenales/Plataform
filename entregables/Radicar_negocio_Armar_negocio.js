@@ -54,6 +54,12 @@ function poner(label, valor){
   }
 }
 
+// Correo del cliente digitado por el comercial en el panel (24-nov-2026). Se lee del webhook, como la carpeta.
+let correoCliente = '';
+try { correoCliente = String((($('Webhook: radicar negocio').first().json.body || {}).correoCliente) || n.correoCliente || '').trim(); } catch (e) { correoCliente = String(n.correoCliente || '').trim(); }
+// Si el administrador de HubSpot crea la propiedad "Correo del cliente" en negocios, se llena sola; si no existe, no avisa.
+if (correoCliente && buscar('Correo del cliente')) poner('Correo del cliente', correoCliente);
+
 // 1-2. Nombre (cliente - pagador o "Varios" - iniciales) y propietario
 const nombreComercial = r.owner ? ((r.owner.firstName || '') + ' ' + (r.owner.lastName || '')) : n.comercial;
 const iniciales = norm(nombreComercial).split(' ').filter(Boolean).map(w => w[0].toUpperCase()).join('') || 'SC';
@@ -242,6 +248,7 @@ const pagadores = ops.map(o => o.razonSocialPagador || 'NIT ' + o.nitPagador).jo
 const notaHtml = '<p>@' + r.config.MENCIONAR + ' cliente listo para operar. Resumen para tu validación y aprobación.</p>' +
   '<p>Cliente: ' + esc(n.nombreEmisor) + ' (NIT ' + n.nitEmisor + ')<br>Valor (monto del negocio) total: ' + pesos(total) +
   '<br>Radicado por: ' + esc(nombreComercial || 'sin nombre') + ' desde el panel comercial.' +
+  '<br>Correo del cliente (liquidación): ' + (correoCliente ? esc(correoCliente) : 'no lo digitó el comercial') +
   // Sesión con cliente real (23-nov-2026): enlace de la carpeta de la operación (mapeo, cotización, carta de endoso).
   '<br>Carpeta de la operación: ' + (carpeta.url ? '<a href="' + esc(carpeta.url) + '">' + esc(carpeta.nombre || carpeta.url) + '</a>' : 'no se creó' + (carpeta.error ? ' (' + esc(carpeta.error) + ')' : '')) + '</p>' +
   bloques.join('');

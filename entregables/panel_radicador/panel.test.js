@@ -37,6 +37,7 @@ function cargarPanel() {
   Object.assign(document.getElementById('c_tasa_rf'), { value: '11' });
   Object.assign(document.getElementById('c_tasa_ri'), { value: '0.966' });
   Object.assign(document.getElementById('c_tasa_riva'), { value: '15' });
+  Object.assign(document.getElementById('c_correo_cliente'), { value: 'tesoreria@cliente.com' });
   const localStorage = { getItem() { return null; }, setItem() {} };
   const fetch = () => Promise.reject(new Error('sin red en pruebas'));
   const fn = new Function('document', 'localStorage', 'fetch',
@@ -631,8 +632,25 @@ test('correos del pagador: llegan aparte, se muestran en el bloque y van en el p
   assert.ok(leerHtml().includes('Correos de notificación del pagador: '));
 });
 
+test('correo del cliente: obligatorio, con formato válido y va en el payload (24-nov-2026)', () => {
+  const { api, els } = cargarPanel();
+  els.c_tasa_inv.value = '16';
+  api.setEmisorRiesgo({ diasMora: 0, anticipoPactado: 95, plazoPactado: 120, cupoDisponible: 1e12 });
+  api.setOperaciones([{ nit: '1', razon_social: 'P', cupoDisponible: 1e12, facturas: [{ folio: 'F1', valor: 50000000 }] }]);
+  const plazo = { dias: 60, diasPTG: 60, fechaInvalida: false };
+  assert.equal(api.pintar_validaciones(plazo), 0, 'con correo válido pasa');
+  els.c_correo_cliente.value = '';
+  assert.equal(api.pintar_validaciones(plazo), 1);
+  assert.ok(els.caja_validaciones.innerHTML.includes('Falta el correo del cliente'));
+  els.c_correo_cliente.value = 'a@cliente.com; malo@hotmail.com.com';
+  assert.equal(api.pintar_validaciones(plazo), 1);
+  assert.ok(els.caja_validaciones.innerHTML.includes('Correo del cliente mal escrito: malo@hotmail.com.com.'));
+  els.c_correo_cliente.value = ' a@cliente.com ;b@cliente.com.co ';
+  assert.equal(api.construir_payload().correoCliente, 'a@cliente.com, b@cliente.com.co');
+});
+
 test('index.html llegó idéntico al probado (huella SHA-256)', () => {
   const contenido = leerHtml().replace(/\r\n/g, '\n').replace(/\s+$/, '');
   const huella = require('node:crypto').createHash('sha256').update(contenido).digest('hex');
-  assert.equal(huella, '0d6b5b1020cb9305562ca7d3f0d76c4013f4a8db9b9c43e784c061b37110e2c3');
+  assert.equal(huella, '1f15e80cae0422940e4972213c291746de14dbc9a54bc0c65d126084a6babb48');
 });

@@ -167,6 +167,9 @@ td input{padding:5px 7px;font-size:12.5px}
               <select id="c_tipo"><option>Factoring</option><option>Confirming</option></select></div>
             <div><label class="pv_check" style="margin-top:22px"><input type="checkbox" id="c_primera">Primera operación del cliente</label>
               <p class="pv_ayuda">Aplica el costo fijo de Confecámaras solo en la primera vez.</p></div>
+            <div><label for="c_correo_cliente">Correo del cliente (para enviar la liquidación)</label>
+              <input type="text" id="c_correo_cliente" inputmode="email" placeholder="correo@empresa.com">
+              <p class="pv_ayuda">Obligatorio. Si son varios, sepáralos con coma. Va a la nota de HubSpot.</p></div>
           </div>
         </div>
       </div>
@@ -688,6 +691,13 @@ function textoCorreos(nit){
   return escapeHtml(c.validos.join(", ")) + (c.revisar.length ? ' <b>· Revisar (mal escritos): ' + escapeHtml(c.revisar.join(", ")) + '</b>' : "");
 }
 
+// Correo(s) del cliente digitados en la sección 1: se separan por coma, punto y coma o espacio.
+function correosCliente(){
+  var todos = String(val("c_correo_cliente") || "").split(/[\s,;]+/).map(function(t){ return t.trim(); }).filter(Boolean);
+  var malos = todos.filter(function(t){ return !/^[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}$/.test(t) || /\.(com|co|net|org)\.\1$/i.test(t); });
+  return { todos: todos, malos: malos };
+}
+
 function claveFactura(f){ return (f.folio || "") + "|" + (f.cufe || ""); }
 
 /* ==================================================================
@@ -939,6 +949,10 @@ function calcularAvisos(plazo, soloIo){
   if(dias < 30){ avisos.push(["mal","El plazo debe ser de al menos 30 días."]); }
   if(tipoFondeo !== "propia" && !(num("c_tasa_inv") > 0)){ avisos.push(["mal","Falta la tasa del inversionista (E.A.)."]); }
   if(tipoFondeo !== "crowd"){ avisos.push(["mal","En esta fase solo se radica con fondeo Crowd."]); }
+  // Correo del cliente digitado por el comercial (24-nov-2026): obligatorio y con formato válido.
+  var correos = correosCliente();
+  if(!correos.todos.length){ avisos.push(["mal","Falta el correo del cliente (sección 1)."]); }
+  else if(correos.malos.length){ avisos.push(["mal","Correo del cliente mal escrito: " + correos.malos.join(", ") + "."]); }
   // Siempre debe haber tasa de usura del mes (Jenny, 23-nov-2026): sin ella no se radica.
   if(!usuraVigente()){
     avisos.push(["mal","No hay tasa de usura vigente para " + mesActual() + (usuraMes ? " (la hoja SPREAD tiene " + usuraMes.mes + ")" : usuraError ? " (" + usuraError + ")" : "") + ". No se puede radicar hasta que se actualice."]);
@@ -1276,6 +1290,7 @@ function construir_payload(){
     nitEmisor: soloDigitos(val("c_nit")),
     nombreEmisor: val("c_razon_emisor"),
     comercial: val("c_comercial").trim(),
+    correoCliente: correosCliente().todos.join(", "),
     esPrimeraOperacion: marcado("c_primera"),
     tipoOperacion: val("c_tipo"),
     condiciones: ops[0].condiciones,
@@ -1572,7 +1587,7 @@ $("b_confirmar").addEventListener("click", function(){
 /* ==================================================================
    Eventos
    ================================================================== */
-["c_primera","c_tipo","c_anio","c_anticipo","c_tasa_inv","c_fng",
+["c_primera","c_tipo","c_anio","c_anticipo","c_tasa_inv","c_fng","c_correo_cliente",
  "c_desembolso","c_dias","c_fecha_pago","c_rf","c_ri","c_riva","c_tasa_rf","c_tasa_ri","c_tasa_riva"].forEach(function(id){
   $(id).addEventListener("input", function(){ recalcular(false); });
   $(id).addEventListener("change", function(){ recalcular(false); });
