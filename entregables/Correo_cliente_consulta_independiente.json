@@ -1,0 +1,108 @@
+{
+  "name": "Correo del cliente (consulta independiente)",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "f04153c0-f5df-4173-8f01-0fb90f3ad773",
+      "name": "Ejecutar a mano",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Cambia aquí el NIT del cliente (sin dígito de verificación) y ejecuta el flujo.\nconst nit = '901314381';\nconst limpio = String(nit).replace(/\\D/g, '');\nconst bqQuery = \"SELECT nit_cliente, razon_social, nit_contraparte, razon_social_contraparte, correos_notificacion \" +\n  \"FROM `inlaid-stack-375114.analytics_data_products.mapping_rules` WHERE nit_cliente = '\" + limpio + \"'\";\nreturn [{ json: { nit: limpio, bqQuery } }];"
+      },
+      "id": "1c92fcc4-c2f8-4ad3-9468-77f9b5fd6711",
+      "name": "NIT a consultar",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        220,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://bigquery.googleapis.com/bigquery/v2/projects/inlaid-stack-375114/queries",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleApi",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { query: $json.bqQuery, useLegacySql: false, timeoutMs: 120000 } }}",
+        "options": {
+          "timeout": 150000
+        }
+      },
+      "id": "c3fc2e66-98fc-48c2-86be-397835e7b243",
+      "name": "BigQuery: correos del cliente",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        440,
+        0
+      ],
+      "credentials": {
+        "googleApi": {
+          "id": "zDQ7OLqtmEiki20W",
+          "name": "Bigquery"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Resume qué trae la columna correos_notificacion para el cliente consultado.\nconst resp = $input.first().json || {};\nif (resp.jobComplete === false) {\n  return [{ json: { resultado: 'BigQuery no terminó a tiempo. Vuelve a ejecutar el flujo.' } }];\n}\nconst fields = (resp.schema && resp.schema.fields) || [];\nconst rows = (resp.rows || []).map(row => { const o = {}; row.f.forEach((c, i) => { o[fields[i].name] = c.v; }); return o; });\nconst nit = $('NIT a consultar').first().json.nit;\nif (!rows.length) return [{ json: { nit, resultado: 'El NIT no aparece como cliente en mapping_rules.' } }];\nconst limpio = v => (v == null ? '' : String(v).trim());\nconst distintos = [...new Set(rows.map(r => limpio(r.correos_notificacion)).filter(Boolean))];\nconst conCorreo = rows.filter(r => limpio(r.correos_notificacion)).length;\nlet lectura;\nif (!distintos.length) lectura = 'VACÍO: ninguna fila trae correo. Hay que definir otra fuente con Álvaro.';\nelse if (distintos.length === 1 && conCorreo === rows.length) lectura = 'UN SOLO CORREO en todas las filas: parece ser el correo del cliente.';\nelse lectura = 'CAMBIA SEGÚN EL PAGADOR (o no todas las filas lo traen): parece ser el correo del pagador, no del cliente.';\nreturn [{ json: {\n  nit, cliente: rows[0].razon_social, filas: rows.length, filasConCorreo: conCorreo,\n  correosDistintos: distintos, lectura,\n  detallePorPagador: rows.map(r => ({ pagador: r.razon_social_contraparte, nitPagador: r.nit_contraparte, correo: limpio(r.correos_notificacion) || '(vacío)' }))\n} }];"
+      },
+      "id": "c028603e-997c-419c-a11a-5ab159d24c03",
+      "name": "Resumen de correos",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        660,
+        0
+      ]
+    }
+  ],
+  "connections": {
+    "Ejecutar a mano": {
+      "main": [
+        [
+          {
+            "node": "NIT a consultar",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "NIT a consultar": {
+      "main": [
+        [
+          {
+            "node": "BigQuery: correos del cliente",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "BigQuery: correos del cliente": {
+      "main": [
+        [
+          {
+            "node": "Resumen de correos",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}
