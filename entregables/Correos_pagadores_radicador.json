@@ -1,0 +1,259 @@
+{
+  "name": "Correos de los pagadores (radicador)",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "Correos_pagadores",
+        "responseMode": "responseNode",
+        "options": {
+          "allowedOrigins": "*"
+        }
+      },
+      "id": "b8caa028-8c17-422c-bd75-f216ba4e72c6",
+      "name": "Webhook: correos pagadores",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        720,
+        496
+      ],
+      "webhookId": "ba37d7ad-b096-4ed5-be97-0babdbacb4bf"
+    },
+    {
+      "parameters": {
+        "jsCode": "const nitEmisor = String($input.first().json.query.nitEmisor || '').replace(/\\D/g, '');\nif (!nitEmisor) {\n  throw new Error('Falta el parámetro nitEmisor en la consulta.');\n}\nreturn [{ json: { nitEmisor } }];"
+      },
+      "id": "33f1ea70-6ff3-49e7-b0e4-f050427e4b12",
+      "name": "Normalizar NIT emisor",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        896,
+        496
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Consulta por partes: si el panel vuelve a preguntar trae jobId/location (solo letras, números, - y _).\nconst _qp = $('Webhook: correos pagadores').first().json.query || {};\nconst _jobId = String(_qp.jobId || '').replace(/[^A-Za-z0-9_-]/g, '');\nconst _location = String(_qp.location || '').replace(/[^A-Za-z0-9-]/g, '') || 'us-east1';\nconst nitEmisor = $input.first().json.nitEmisor;\n// Solo los correos de notificación de cada pagador del cliente (mapping_rules). No toca los demás flujos.\nconst bqQuery = 'SELECT nit_contraparte, razon_social_contraparte, correos_notificacion ' +\n  'FROM `inlaid-stack-375114.analytics_data_products.mapping_rules`' +\n  \" WHERE nit_cliente = '\" + nitEmisor + \"' AND nit_contraparte IS NOT NULL\";\nreturn [{ json: { jobId: _jobId, location: _location, nitEmisor, bqQuery } }];"
+      },
+      "id": "c14c619c-11e1-44e7-94e5-3064f4b26f11",
+      "name": "Construir SQL",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1088,
+        496
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "3e141c01-76d6-4c9d-a252-dfbf55a4ae58",
+              "leftValue": "={{ $json.jobId }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "id": "1e58a42c-8f5b-4df0-afa8-c3c1a5483978",
+      "name": "¿Ya hay consulta en curso?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1144,
+        496
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://bigquery.googleapis.com/bigquery/v2/projects/inlaid-stack-375114/queries",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleApi",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { query: $json.bqQuery, useLegacySql: false, timeoutMs: 20000 } }}",
+        "options": {}
+      },
+      "id": "cf6baff8-69a7-4429-bf10-d3aa62b02a4e",
+      "name": "BigQuery: correos pagadores",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1264,
+        656
+      ],
+      "credentials": {
+        "googleApi": {
+          "id": "zDQ7OLqtmEiki20W",
+          "name": "Bigquery"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "=https://bigquery.googleapis.com/bigquery/v2/projects/inlaid-stack-375114/queries/{{ $json.jobId }}?location={{ $json.location }}&timeoutMs=20000",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleApi",
+        "options": {}
+      },
+      "id": "d3a055cd-0098-4073-8f85-e251ab98254b",
+      "name": "BigQuery: leer resultado",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1264,
+        336
+      ],
+      "credentials": {
+        "googleApi": {
+          "id": "zDQ7OLqtmEiki20W",
+          "name": "Bigquery"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Consulta por partes: BigQuery aún no termina -> el panel vuelve a preguntar con este jobId.\nconst _r = $input.first().json || {};\nif (_r.jobComplete === false && _r.jobReference && _r.jobReference.jobId) {\n  return [{ json: { pendiente: true, jobId: _r.jobReference.jobId, location: _r.jobReference.location || 'us-east1' } }];\n}\nconst fields = (_r.schema && _r.schema.fields) || [];\nconst rows = (_r.rows || []).map(row => { const o = {}; row.f.forEach((c, i) => { o[fields[i].name] = c.v; }); return o; });\n\n// El campo viene escrito a mano: se separa por coma, punto y coma, espacios, \" - \" o \"CC\".\n// Correo válido = formato normal, sin tildes ni dominio repetido (.com.com). Lo demás queda como \"revisar\".\nconst VALIDO = /^[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(\\.[A-Za-z0-9-]+)*\\.[A-Za-z]{2,}$/;\nfunction limpiar(texto){\n  const piezas = String(texto == null ? '' : texto)\n    .split(/[\\s,;]+|\\bCC\\b/i)\n    .map(p => p.replace(/^[\"'<(\\[]+|[\"'>)\\].]+$/g, '').trim())\n    .filter(p => p && p !== '-' && p.includes('@'));\n  const validos = [], revisar = [];\n  piezas.forEach(p => {\n    const malo = !VALIDO.test(p) || /\\.(com|co|net|org)\\.\\1$/i.test(p);\n    const lista = malo ? revisar : validos;\n    if (!lista.some(x => x.toLowerCase() === p.toLowerCase())) lista.push(p);\n  });\n  return { validos, revisar };\n}\n\nconst pagadores = {};\nrows.forEach(r => {\n  const nit = String(r.nit_contraparte || '').replace(/\\D/g, '');\n  if (!nit) return;\n  const c = limpiar(r.correos_notificacion);\n  const prev = pagadores[nit] || { razonSocial: r.razon_social_contraparte || '', validos: [], revisar: [] };\n  c.validos.forEach(x => { if (!prev.validos.includes(x)) prev.validos.push(x); });\n  c.revisar.forEach(x => { if (!prev.revisar.includes(x)) prev.revisar.push(x); });\n  pagadores[nit] = prev;\n});\nreturn [{ json: { encontrado: rows.length > 0, pagadores } }];"
+      },
+      "id": "1228ad1d-fa16-42fc-8476-7614899c7b1d",
+      "name": "Formatear respuesta",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1440,
+        496
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json }}",
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Access-Control-Allow-Origin",
+                "value": "*"
+              }
+            ]
+          }
+        }
+      },
+      "id": "08f677fe-c767-4535-aca0-46e1d8483c1e",
+      "name": "Responder al panel",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        1680,
+        496
+      ]
+    }
+  ],
+  "connections": {
+    "Webhook: correos pagadores": {
+      "main": [
+        [
+          {
+            "node": "Normalizar NIT emisor",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalizar NIT emisor": {
+      "main": [
+        [
+          {
+            "node": "Construir SQL",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Construir SQL": {
+      "main": [
+        [
+          {
+            "node": "¿Ya hay consulta en curso?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "¿Ya hay consulta en curso?": {
+      "main": [
+        [
+          {
+            "node": "BigQuery: leer resultado",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "BigQuery: correos pagadores",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "BigQuery: correos pagadores": {
+      "main": [
+        [
+          {
+            "node": "Formatear respuesta",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "BigQuery: leer resultado": {
+      "main": [
+        [
+          {
+            "node": "Formatear respuesta",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Formatear respuesta": {
+      "main": [
+        [
+          {
+            "node": "Responder al panel",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}

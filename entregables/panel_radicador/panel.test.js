@@ -614,8 +614,25 @@ test('facturas de contado bloquean la operación (Jenny, 24-nov-2026)', () => {
   assert.ok(els.caja_validaciones.innerHTML.includes('P: 1 factura es de contado (F2); quítalas, no se radican.'));
 });
 
+test('correos del pagador: llegan aparte, se muestran en el bloque y van en el payload (24-nov-2026)', async () => {
+  const { api, els } = cargarPanel();
+  const resp = (d) => Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(d) });
+  api.setFetch((url) => url.includes('Correos_pagadores')
+    ? resp({ encontrado: true, pagadores: { '222': { validos: ['a@hv.com.co', 'b@hv.com.co'], revisar: ['x@hotmail.com.com'] } } })
+    : url.includes('Listar_facturas') ? resp({ encontrado: true, facturas: [{ nitPagador: '222', folio: 'F1', valor: 100 }] })
+    : resp({ encontrado: true, emisor: { razon_social: 'E' }, pagadores: [{ nit: '222', razon_social: 'HARINERA', viabilidad: 'VIABLE' }, { nit: '333', razon_social: 'OTRO', viabilidad: 'VIABLE' }] }));
+  api.setToken(1);
+  api.listarPagadores('900', 1);
+  await new Promise((r) => setTimeout(r, 30));
+  api.setOperaciones([{ nit: '222', razon_social: 'HARINERA', facturas: [{ folio: 'F1', valor: 100 }] }, { nit: '333', razon_social: 'OTRO', facturas: [{ folio: 'G1', valor: 100 }] }]);
+  const ops = api.construir_payload().operaciones;
+  assert.deepEqual(ops[0].correosPagador, { validos: ['a@hv.com.co', 'b@hv.com.co'], revisar: ['x@hotmail.com.com'] });
+  assert.deepEqual(ops[1].correosPagador, { validos: [], revisar: [] }, 'pagador sin correo en el mapeo');
+  assert.ok(leerHtml().includes('Correos de notificación del pagador: '));
+});
+
 test('index.html llegó idéntico al probado (huella SHA-256)', () => {
   const contenido = leerHtml().replace(/\r\n/g, '\n').replace(/\s+$/, '');
   const huella = require('node:crypto').createHash('sha256').update(contenido).digest('hex');
-  assert.equal(huella, 'c1d15f4a440c4d830a155fd69622dca547065eb37a8444798e54b1c7915ac35e');
+  assert.equal(huella, '0d6b5b1020cb9305562ca7d3f0d76c4013f4a8db9b9c43e784c061b37110e2c3');
 });

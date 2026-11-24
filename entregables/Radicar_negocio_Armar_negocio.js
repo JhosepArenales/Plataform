@@ -207,6 +207,12 @@ const anticipoVsRiesgo = k => {
   if (!isFinite(m)) return ' (aprobado por Riesgo: sin dato)';
   return a < m - 1e-9 ? ' <strong>(menor al aprobado por Riesgo: ' + pctTxt(m, null) + ')</strong>' : ' (aprobado por Riesgo: ' + pctTxt(m, null) + ')';
 };
+const correosTxt = c => {
+  if (!c) return 'no se pudieron traer (flujo Correos_pagadores)';
+  const v = Array.isArray(c.validos) ? c.validos : [], m = Array.isArray(c.revisar) ? c.revisar : [];
+  if (!v.length && !m.length) return 'sin correo en el mapeo de Riesgo';
+  return esc(v.join(', ')) + (m.length ? ' <strong>· Revisar (mal escritos): ' + esc(m.join(', ')) + '</strong>' : '');
+};
 const bloques = ops.map((o, i) => {
   const k = condOp(o), l = o.liquidacion || {};
   const inv = aNum(k.tasaMaximaInversionistaEA != null ? k.tasaMaximaInversionistaEA : k.tasaInversionistaEA);
@@ -224,6 +230,8 @@ const bloques = ops.map((o, i) => {
     // Sesión con cliente real (23-nov-2026): anticipo y spread solo mora (archivo SPREAD).
     '<br>% Anticipo: ' + pctTxt(aNum(k.anticipoPct), null) + anticipoVsRiesgo(k) +
     // Pedido de Jenny (24-nov-2026): retenciones aplicadas en la operación.
+    // Correos de notificación del pagador (mapping_rules, 24-nov-2026). Los mal escritos se marcan para revisar.
+    '<br>Correos de notificación del pagador: ' + correosTxt(o.correosPagador) +
     '<br>Retenciones: ' + retTxt(k.retenciones) + (isFinite(aNum(l.totalRetenciones)) ? ' · Total ' + pesos(l.totalRetenciones) : '') +
     '<br>% Spread rent. solo mora: ' + (isFinite(aNum(k.spreadSoloMora)) ? aNum(k.spreadSoloMora).toFixed(2) : 'sin dato') +
       (isFinite(aNum(k.usuraEA)) ? ' (usura ' + esc(k.mesUsura || '') + ': ' + pctTxt(aNum(k.usuraEA), 2) + ', tope Plataform ' + pctTxt(aNum(k.topeUsuraEA), 2) + ')' : '') +
