@@ -632,7 +632,7 @@ test('correos del pagador: llegan aparte, se muestran en el bloque y van en el p
   assert.ok(leerHtml().includes('Correos de notificación del pagador: '));
 });
 
-test('correo del cliente: obligatorio, con formato válido y va en el payload (24-nov-2026)', () => {
+test('correo del cliente: opcional; si se digita debe estar bien escrito y va en el payload (24-nov-2026)', () => {
   const { api, els } = cargarPanel();
   els.c_tasa_inv.value = '16';
   api.setEmisorRiesgo({ diasMora: 0, anticipoPactado: 95, plazoPactado: 120, cupoDisponible: 1e12 });
@@ -640,8 +640,8 @@ test('correo del cliente: obligatorio, con formato válido y va en el payload (2
   const plazo = { dias: 60, diasPTG: 60, fechaInvalida: false };
   assert.equal(api.pintar_validaciones(plazo), 0, 'con correo válido pasa');
   els.c_correo_cliente.value = '';
-  assert.equal(api.pintar_validaciones(plazo), 1);
-  assert.ok(els.caja_validaciones.innerHTML.includes('Falta el correo del cliente'));
+  assert.equal(api.pintar_validaciones(plazo), 0, 'sin correo no bloquea (opcional)');
+  assert.ok(els.caja_validaciones.innerHTML.includes('Sin correo del cliente (opcional'));
   els.c_correo_cliente.value = 'a@cliente.com; malo@hotmail.com.com';
   assert.equal(api.pintar_validaciones(plazo), 1);
   assert.ok(els.caja_validaciones.innerHTML.includes('Correo del cliente mal escrito: malo@hotmail.com.com.'));
@@ -652,5 +652,5 @@ test('correo del cliente: obligatorio, con formato válido y va en el payload (2
 test('index.html llegó idéntico al probado (huella SHA-256)', () => {
   const contenido = leerHtml().replace(/\r\n/g, '\n').replace(/\s+$/, '');
   const huella = require('node:crypto').createHash('sha256').update(contenido).digest('hex');
-  assert.equal(huella, '1f15e80cae0422940e4972213c291746de14dbc9a54bc0c65d126084a6babb48');
+  assert.equal(huella, '5f5eb3aa10ec3d73d17932b96005c28bc1914e74e59f36cf33d16c3268947ad9');
 });
