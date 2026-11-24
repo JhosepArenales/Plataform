@@ -971,6 +971,9 @@ function calcularAvisos(plazo, soloIo){
     if(!operacion.nit){ avisos.push(["mal", etiqueta + ": elige el pagador."]); return; }
     var total = operacion.facturas.reduce(function(a,f){ return a + (Number(f.valor)||0); },0);
     if(!operacion.facturas.length){ avisos.push(["mal", etiqueta + ": selecciona al menos una factura."]); }
+    // Facturas de contado no se radican (Jenny, 24-nov-2026). La consulta ya trae solo crédito; esto es un control adicional.
+    var deContado = operacion.facturas.filter(function(f){ return /contado/i.test(String(f.formaPago || "")); });
+    if(deContado.length){ avisos.push(["mal", etiqueta + ": " + deContado.length + (deContado.length === 1 ? " factura es" : " facturas son") + " de contado (" + deContado.map(function(f){ return f.folio; }).join(", ") + "); quítalas, no se radican."]); }
     else if(usuraVigente()){
       var lq = liquidar(operacion, io, plazo);
       if(lq.tasaClienteEA * 100 > usuraMes.topeEA + 1e-9){ avisos.push(["mal", etiqueta + ": la tasa cliente " + pct(lq.tasaClienteEA) + " E.A. supera el tope de usura Plataform (" + usuraMes.topeEA.toLocaleString("es-CO") + "%)."]); }

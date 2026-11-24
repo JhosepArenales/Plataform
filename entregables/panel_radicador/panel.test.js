@@ -602,8 +602,20 @@ test('fase inicial solo crowd y el payload lleva la carpeta, la usura y el sprea
   assert.equal(c.usuraEA, 28.34); assert.equal(c.topeUsuraEA, 28.29); assert.equal('tasaMoraEA' in c, false, 'la tasa mora no va a HubSpot (no la pidió Operaciones)'); assert.equal(c.spreadSoloMora, 41.45);
 });
 
+test('facturas de contado bloquean la operación (Jenny, 24-nov-2026)', () => {
+  const { api, els } = cargarPanel();
+  els.c_tasa_inv.value = '16';
+  api.setEmisorRiesgo({ diasMora: 0, anticipoPactado: 95, plazoPactado: 120, cupoDisponible: 1e12 });
+  const plazo = { dias: 60, diasPTG: 60, fechaInvalida: false };
+  api.setOperaciones([{ nit: '1', razon_social: 'P', cupoDisponible: 1e12, facturas: [{ folio: 'F1', valor: 50000000, formaPago: 'Crédito' }] }]);
+  assert.equal(api.pintar_validaciones(plazo), 0, 'crédito pasa');
+  api.setOperaciones([{ nit: '1', razon_social: 'P', cupoDisponible: 1e12, facturas: [{ folio: 'F1', valor: 50000000, formaPago: 'Crédito' }, { folio: 'F2', valor: 1000000, formaPago: 'CONTADO' }] }]);
+  assert.equal(api.pintar_validaciones(plazo), 1);
+  assert.ok(els.caja_validaciones.innerHTML.includes('P: 1 factura es de contado (F2); quítalas, no se radican.'));
+});
+
 test('index.html llegó idéntico al probado (huella SHA-256)', () => {
   const contenido = leerHtml().replace(/\r\n/g, '\n').replace(/\s+$/, '');
   const huella = require('node:crypto').createHash('sha256').update(contenido).digest('hex');
-  assert.equal(huella, '36bd41dd66af39689cdf5c1784638f8a90ac55207bcc2a8e45f21ef0115951c7');
+  assert.equal(huella, 'c1d15f4a440c4d830a155fd69622dca547065eb37a8444798e54b1c7915ac35e');
 });
