@@ -190,6 +190,14 @@ const tablaFacturas = (o, k) => {
 // La carpeta se crea antes que el negocio; su enlace llega en el cuerpo del webhook.
 let carpeta = {};
 try { carpeta = ($('Webhook: radicar negocio').first().json.body || {}).carpeta || n.carpeta || {}; } catch (e) { carpeta = n.carpeta || {}; }
+// Retenciones de la operación: nombre y tasa de las que aplican; 'ninguna' si no aplica ninguna.
+const retTxt = r => {
+  if (!r) return 'sin dato';
+  const lista = [['reteFuente', 'Retefuente'], ['reteIca', 'Reteica'], ['reteIva', 'Reteiva']]
+    .filter(([c]) => r[c] && r[c].aplica)
+    .map(([c, nom]) => nom + ' ' + pctTxt(aNum(r[c].tasaPct), null));
+  return lista.length ? lista.join(', ') : 'ninguna';
+};
 const bloques = ops.map((o, i) => {
   const k = condOp(o), l = o.liquidacion || {};
   const inv = aNum(k.tasaMaximaInversionistaEA != null ? k.tasaMaximaInversionistaEA : k.tasaInversionistaEA);
@@ -203,6 +211,8 @@ const bloques = ops.map((o, i) => {
     '<br>Efectivo anual (Fee Plataform E.A.): ' + pctTxt(fee, 3) +
     // Sesión con cliente real (23-nov-2026): anticipo y spread solo mora (archivo SPREAD).
     '<br>% Anticipo: ' + pctTxt(aNum(k.anticipoPct), null) +
+    // Pedido de Jenny (24-nov-2026): retenciones aplicadas en la operación.
+    '<br>Retenciones: ' + retTxt(k.retenciones) + (isFinite(aNum(l.totalRetenciones)) ? ' · Total ' + pesos(l.totalRetenciones) : '') +
     '<br>% Spread rent. solo mora: ' + (isFinite(aNum(k.spreadSoloMora)) ? aNum(k.spreadSoloMora).toFixed(2) : 'sin dato') +
       (isFinite(aNum(k.usuraEA)) ? ' (usura ' + esc(k.mesUsura || '') + ': ' + pctTxt(aNum(k.usuraEA), 2) + ', tope Plataform ' + pctTxt(aNum(k.topeUsuraEA), 2) + ')' : '') +
     (subioFee(k) ? '<br><strong>AUMENTO DE FEE</strong>' : '') + '</p>' +
