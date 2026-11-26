@@ -59,6 +59,10 @@ let correoCliente = '';
 try { correoCliente = String((($('Webhook: radicar negocio').first().json.body || {}).correoCliente) || n.correoCliente || '').trim(); } catch (e) { correoCliente = String(n.correoCliente || '').trim(); }
 // Si el administrador de HubSpot crea la propiedad "Correo del cliente" en negocios, se llena sola; si no existe, no avisa.
 if (correoCliente && buscar('Correo del cliente')) poner('Correo del cliente', correoCliente);
+// Tipo de radicación (Álvaro y Katherine, 25-nov-2026): solo los negocios que vienen del radicador la llevan,
+// para que el inbox de Operaciones liste únicamente esos negocios.
+if (buscar('Tipo de radicacion')) poner('Tipo de radicacion', 'Radicador');
+else avisos.push('No se encontró la propiedad "Tipo de radicación" en HubSpot: el negocio no saldrá en el filtro del inbox.');
 
 // 1-2. Nombre (cliente - pagador o "Varios" - iniciales) y propietario
 const nombreComercial = r.owner ? ((r.owner.firstName || '') + ' ' + (r.owner.lastName || '')) : n.comercial;
