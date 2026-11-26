@@ -134,6 +134,9 @@ poner('Valor (monto del negocio)', Math.round(total));
 if (String(n.tipoOperacion).toLowerCase() === 'factoring') poner('Quién asume costos de la operación', 'Emisor');
 else avisos.push('Quién asume costos: la regla solo está definida para Factoring (llegó "' + n.tipoOperacion + '").');
 poner('Solicitud', 'Operación');
+// ¿Fondeo estructurado? (inbox de Operaciones, 26-nov-2026): la regla espera "No" y vacío no cumple.
+// En la fase 1 solo se radica con fondeo Crowd, así que va "No"; "Sí" solo si alguna operación viene con fondeador estructurado.
+poner('¿Fondeo estructurado?', ops.some(o => condOp(o).tipoFondeo === 'estructurado') ? 'Sí' : 'No');
 // Plazo y desembolso de la liquidación del panel (fecha en AAAA-MM-DD, formato que acepta HubSpot).
 ponerTasa('Plazo de la Op. en días', ops.map(o => aNum(condOp(o).plazoDias)), null);
 // Fecha primer desembolso: la más temprana de las operaciones.
