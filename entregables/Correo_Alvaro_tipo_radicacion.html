@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="es"><head><meta charset="utf-8"><title>Correo a Álvaro</title></head>
+<body style="font-family:Arial,sans-serif;font-size:14px;color:#222;max-width:760px;margin:24px auto;padding:0 16px;background:#fff">
+<p>Hola Álvaro, buen día.</p>
+<p>Gracias a ti y a Katherine por la propiedad. Ya quedó implementada y probada:</p>
+<ul>
+<li><b>Tipo de radicación = Radicador:</b> el radicador la llena automáticamente solo en los negocios que crea. Los negocios creados a mano quedan vacíos, así que el inbox ya puede filtrar únicamente lo que viene del radicador.</li>
+<li><b>¿Fondeo estructurado? = No:</b> era la condición que salía en rojo en el inbox porque llegaba vacía. Ahora el radicador la envía en "No", ya que en esta fase solo se radica con fondeo Crowd.</li>
+<li><b>Prueba realizada hoy (26-nov)</b> con SIA Foods y Colanta: el negocio quedó con "Tipo de radicación: Radicador" y en el inbox aparece con <b>"Cumple todas las condiciones"</b>.</li>
+</ul>
+<p>Te dejo dos puntos para tu validación:</p>
+<p><b>1. Propiedades duplicadas del emisor en HubSpot</b><br>
+En la ficha del negocio, la tarjeta <b>"Emisor"</b> muestra <b>Nombre Emisor</b> y <b>Nit Emisor</b> vacíos. El dato no falta: el radicador sí envía el emisor, pero lo registra en otras dos propiedades que significan lo mismo:</p>
+<table cellpadding="8" cellspacing="0" style="border-collapse:collapse;font-family:Arial,sans-serif;font-size:13px">
+<tr style="background:#4A2A7A;color:#ffffff">
+<th style="border:1px solid #4A2A7A;text-align:left">Dato</th>
+<th style="border:1px solid #4A2A7A;text-align:left">Lo llena el radicador en</th>
+<th style="border:1px solid #4A2A7A;text-align:left">Propiedad que queda vacía</th>
+</tr>
+<tr>
+<td style="border:1px solid #C9C5D6">Nombre del emisor</td>
+<td style="border:1px solid #C9C5D6">Nombre empresa (cliente del KAM)</td>
+<td style="border:1px solid #C9C5D6">Nombre Emisor</td>
+</tr>
+<tr style="background:#F0EAF9">
+<td style="border:1px solid #C9C5D6">NIT del emisor</td>
+<td style="border:1px solid #C9C5D6">Nit empresa (cliente del KAM)</td>
+<td style="border:1px solid #C9C5D6">Nit Emisor</td>
+</tr>
+</table>
+<p>Es decir, en HubSpot hay dos pares de propiedades para el mismo dato. Necesito que me confirmes <b>cuál par usan Operaciones, la plataforma o los reportes</b>:</p>
+<ul>
+<li>Si usan "Nombre Emisor" y "Nit Emisor", ajusto el radicador para llenarlas también. Es un cambio menor y el comercial no tiene que digitar nada adicional.</li>
+<li>Si no se usan, Katherine, ¿podrías evaluar si conviene unificarlas u ocultar el par que sobra? Así evitamos que alguien las llene a mano o que queden datos distintos en cada una.</li>
+</ul>
+<p><b>2. Mínimo de $2.000.000</b><br>
+¿El mínimo que mencionaste en la reunión aplica <b>por factura</b> o <b>por operación</b>? Lo dejo como bloqueo en el radicador antes del 1 de diciembre.</p>
+<p>Por nuestra parte, el radicador queda listo para la primera operación real cuando lo coordinemos con Silvia y el comercial.</p>
+<p>Quedo atento.</p>
+<p>Saludos,<br>Jhosep</p>
+</body></html>
