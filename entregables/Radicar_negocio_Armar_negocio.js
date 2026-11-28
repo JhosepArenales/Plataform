@@ -107,14 +107,19 @@ const aNum = v => (v === null || v === undefined || v === '') ? NaN : Number(v);
 //  - Lo digitado (tasa inversionista, % Fee del período) va exacto.
 //  - Lo calculado va con los mismos decimales que muestra el panel: tasa cliente M.V. 2 decimales, Fee E.A. 3 decimales.
 // dec = null -> sin redondear; texto = cómo se escribe si el campo de HubSpot es de texto.
-function ponerTasa(label, vals, dec, conComa){
+function ponerTasa(label, vals, dec, conComa, usarMaxima){
   const p = buscar(label);
   if (!p) { faltantes.push(label); return; }
   if (vals.some(v => !isFinite(v))) { avisos.push(label + ': el panel no envió el dato, quedó vacío.'); return; }
   const r = vals.map(v => dec == null ? v : Number(v.toFixed(dec)));
   const texto = v => { const t = dec == null ? String(v) : v.toFixed(dec); return conComa ? t.replace('.', ',') : t; };
   // Con varias operaciones el campo del negocio dice "Varios" (el detalle de cada una va en la nota).
-  if (!varios) {
+  // Tasas máximas con varias operaciones (Karen/Jhosep, 28-nov-2026): va la más alta de todas, así el inbox no
+  // las ve vacías; el detalle de cada pagador sigue en la nota.
+  if (varios && usarMaxima) {
+    const max = Math.max(...r);
+    poner(label, p.type === 'number' ? max : texto(max));
+  } else if (!varios) {
     poner(label, p.type === 'number' ? r[0] : texto(r[0]));
   } else if (p.type === 'number') {
     avisos.push(label + ' es un campo numérico en HubSpot y no admite "Varios": quedó vacío (cambiar la propiedad a texto).');
@@ -123,8 +128,8 @@ function ponerTasa(label, vals, dec, conComa){
   }
 }
 ponerTasa('Fee del negocio', ops.map(o => aNum(condOp(o).feePeriodoPct)), 3, true);
-ponerTasa('Tasa Máxima al Inversionista', ops.map(o => { const k = condOp(o); return aNum(k.tasaMaximaInversionistaEA != null ? k.tasaMaximaInversionistaEA : k.tasaInversionistaEA); }), null);
-ponerTasa('Tasa Máxima Final al cliente', ops.map(o => aNum((o.liquidacion || {}).nominalMensual) * 100), 2);
+ponerTasa('Tasa Máxima al Inversionista', ops.map(o => { const k = condOp(o); return aNum(k.tasaMaximaInversionistaEA != null ? k.tasaMaximaInversionistaEA : k.tasaInversionistaEA); }), null, false, true);
+ponerTasa('Tasa Máxima Final al cliente', ops.map(o => aNum((o.liquidacion || {}).nominalMensual) * 100), 2, false, true);
 ponerTasa('Efectivo anual', ops.map(o => { const k = condOp(o); return aNum(k.feeAplicadoEA != null ? k.feeAplicadoEA : k.feePlataformEA); }), 3);
 
 // 11-13. Monto, costos, solicitud
